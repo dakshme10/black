@@ -80,3 +80,11 @@ audit:
   audit_file: "logs/audit_trail.jsonl"
   api_log_file: "logs/api_requests.jsonl"
   max_log_bytes: 104857600  # 100 MB
+
+web:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8080
+  auth_token: ""
+  broadcast_interval_seconds: 1.0
+

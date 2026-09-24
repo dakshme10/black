@@ -31,6 +31,7 @@ from logs.audit_logger import AuditLogger
 from state.order_state import OrderStateManager
 from state.portfolio_tracker import PortfolioTracker
 from state.reconciliation import ReconciliationEngine
+from core.web_server import WebServer
 
 
 class RoostooAutonomousBot:
@@ -114,6 +115,18 @@ class RoostooAutonomousBot:
         self.last_order: str = "None"
         self.last_error: str = "None"
 
+        # Web Dashboard & Interactive Controls
+        self.paused: bool = False
+        self.signal_history: List[Dict[str, Any]] = []
+        self.web_server: Optional[WebServer] = None
+        if getattr(config, "web", None) and config.web.enabled:
+            self.web_server = WebServer(
+                bot=self,
+                host=config.web.host,
+                port=config.web.port,
+                auth_token=config.web.auth_token,
+            )
+
     def verify_live_safety_gate(self) -> Tuple[bool, str]:
         """
         Screen 1 & Section 33: Refuses live order placement unless all strict preconditions pass.
@@ -188,6 +201,12 @@ class RoostooAutonomousBot:
 
         self.last_market_update = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
         self.is_running = True
+
+        # Launch Web Dashboard Server if enabled
+        if self.web_server:
+            print(f"\n[+] Starting Web Telemetry Dashboard on http://{self.config.web.host}:{self.config.web.port} ...")
+            self.web_server.start()
+
         return True
 
     def run_cycle(self) -> None:
@@ -202,6 +221,11 @@ class RoostooAutonomousBot:
         # 2. Update mark prices in portfolio ledger
         mark_prices = {p: snap.last_price for p, snap in tickers.items()}
         self.portfolio.update_mark_prices(mark_prices)
+
+        # Check if bot is paused
+        if self.paused:
+            self.last_signal = "BOT PAUSED (Manual Pause Active)"
+            return
 
         # 3. Check Circuit Breakers (Section 17)
         is_tripped, breaker_msg = self.risk_manager.check_circuit_breakers()
@@ -317,6 +341,22 @@ class RoostooAutonomousBot:
             if signal.direction != "NO_TRADE":
                 self.last_signal = f"{signal.direction} {symbol} via {signal.strategy} (conf={signal.confidence:.2f})"
                 self.active_strategy = signal.strategy
+                self.signal_history.append({
+                    "timestamp": int(time.time() * 1000),
+                    "symbol": symbol,
+                    "direction": signal.direction,
+                    "strategy": signal.strategy,
+                    "confidence": signal.confidence,
+                    "entry_price": signal.entry_price,
+                    "stop_loss": signal.stop_loss,
+                    "take_profit_1": signal.take_profit_1,
+                    "take_profit_2": signal.take_profit_2,
+                    "expected_rr": signal.expected_rr,
+                    "reason": signal.reason,
+                    "regime": signal.regime,
+                })
+                if len(self.signal_history) > 100:
+                    self.signal_history.pop(0)
 
                 # Risk Validation and Sizing
                 sym_prec = self.executor.get_symbol_precision(symbol)
@@ -377,6 +417,10 @@ class RoostooAutonomousBot:
         """
         self.is_running = False
         print("\n[+] Initiating graceful shutdown...")
+
+        if self.web_server:
+            self.web_server.stop()
+
         self.portfolio._persist()
         self.order_manager._persist()
 
@@ -387,6 +431,291 @@ class RoostooAutonomousBot:
         self.logger.log_system_event("SHUTDOWN", f"Graceful shutdown complete. Audit integrity verified: {valid}")
         print("[+] Bot stopped cleanly. State persisted to data/.")
 
+    def toggle_pause(self) -> bool:
+        """Toggle pause state for scanning and opening new positions."""
+        self.paused = not self.paused
+        state_str = "PAUSED" if self.paused else "RESUMED"
+        self.logger.log_system_event("OPERATOR_PAUSE_TOGGLE", f"Bot execution toggled to {state_str}", {"paused": self.paused})
+        return self.paused
+
+    def handle_kill_switch(self) -> Dict[str, Any]:
+        """Emergency kill switch: activates permanent breaker and de-risks all positions."""
+        self.risk_manager.permanent_kill_switch = True
+        liquidated = []
+        tickers = self.market_data.latest_tickers
+        for sym, pos in list(self.portfolio.positions.items()):
+            if pos.quantity > 0:
+                snap = tickers.get(sym)
+                px = snap.last_price if snap else pos.current_price
+                sig = Signal(
+                    strategy="RISK_MANAGER",
+                    symbol=sym,
+                    direction="DE_RISK",
+                    confidence=1.0,
+                    entry_price=px,
+                    stop_loss=0.0,
+                    take_profit_1=0.0,
+                    take_profit_2=0.0,
+                    expected_rr=0.0,
+                    reason="EMERGENCY WEB DASHBOARD KILL SWITCH",
+                    regime="",
+                    timestamp=int(time.time() * 1000),
+                )
+                risk_dec = self.risk_manager.evaluate_signal(sig)
+                order = self.executor.execute_decision(sig, risk_dec, px)
+                liquidated.append({"symbol": sym, "order": order.to_dict() if order else None})
+
+        self.portfolio._persist()
+        self.order_manager._persist()
+        self.logger.log_system_event("KILL_SWITCH_ACTIVATED", "Emergency kill switch activated from web dashboard", {"liquidated": liquidated})
+        return {"killed": True, "liquidated": liquidated}
+
+    def handle_reconcile(self) -> Dict[str, Any]:
+        """Trigger on-demand exchange reconciliation and balance sync."""
+        report = self.reconciliation.reconcile()
+        return {
+            "is_synchronized": report.is_synchronized,
+            "actions_taken": report.actions_taken,
+            "discrepancies": report.discrepancies,
+            "timestamp": report.timestamp,
+        }
+
+    def handle_derisk(self, symbol: str = "") -> Dict[str, Any]:
+        """Close specific position or all open positions cleanly to cash."""
+        liquidated = []
+        tickers = self.market_data.latest_tickers
+        targets = [symbol] if symbol else list(self.portfolio.positions.keys())
+        for sym in targets:
+            pos = self.portfolio.positions.get(sym)
+            if pos and pos.quantity > 0:
+                snap = tickers.get(sym)
+                px = snap.last_price if snap else pos.current_price
+                sig = Signal(
+                    strategy="OPERATOR_OVERRIDE",
+                    symbol=sym,
+                    direction="DE_RISK",
+                    confidence=1.0,
+                    entry_price=px,
+                    stop_loss=0.0,
+                    take_profit_1=0.0,
+                    take_profit_2=0.0,
+                    expected_rr=0.0,
+                    reason="MANUAL DASHBOARD DE-RISK",
+                    regime="",
+                    timestamp=int(time.time() * 1000),
+                )
+                risk_dec = self.risk_manager.evaluate_signal(sig)
+                order = self.executor.execute_decision(sig, risk_dec, px)
+                liquidated.append({"symbol": sym, "order": order.to_dict() if order else None})
+
+        return {"success": True, "liquidated": liquidated}
+
+    def handle_reset_risk(self) -> Dict[str, Any]:
+        """Reset rolling 24h freeze timer and cleared breaker flags."""
+        self.risk_manager.freeze_until_timestamp = 0.0
+        self.risk_manager.permanent_kill_switch = False
+        self.logger.log_system_event("RISK_RESET", "Operator manually reset risk circuit breaker freeze via dashboard")
+        return {"reset": True, "is_frozen": False}
+
+
+    def handle_manual_trade(self, symbol: str, side: str, notional_usd: float = 0.0) -> Dict[str, Any]:
+        """Evaluate and execute manual trade with strict risk sizing."""
+        snap = self.market_data.latest_tickers.get(symbol)
+        curr_px = snap.last_price if snap else 0.0
+        if curr_px <= 0:
+            return {"success": False, "error": f"No ticker price available for {symbol}"}
+
+        direction = "BUY" if side.upper() == "BUY" else "DE_RISK"
+        sig = Signal(
+            strategy="MANUAL_TRADE",
+            symbol=symbol,
+            direction=direction,
+            confidence=0.85,
+            entry_price=curr_px,
+            stop_loss=curr_px * 0.98 if direction == "BUY" else 0.0,
+            take_profit_1=curr_px * 1.02 if direction == "BUY" else 0.0,
+            take_profit_2=curr_px * 1.04 if direction == "BUY" else 0.0,
+            expected_rr=2.0,
+            reason="OPERATOR MANUAL TRADE VIA DASHBOARD",
+            regime="",
+            timestamp=int(time.time() * 1000),
+        )
+        sym_prec = self.executor.get_symbol_precision(symbol)
+        risk_decision = self.risk_manager.evaluate_signal(sig, symbol_precision=sym_prec)
+        if not risk_decision.approved:
+            return {"success": False, "error": f"Risk Manager Veto: {risk_decision.reason}"}
+
+        order = self.executor.execute_decision(sig, risk_decision, curr_px)
+        return {"success": True, "order": order.to_dict() if order else None}
+
+    def get_strategy_tracking_data(self) -> List[Dict[str, Any]]:
+        """
+        Extract real-time strategy tracking data for each trading pair,
+        including Volume Profile (VAH/VAL/POC), Liquidity Sweeps, CVD Absorption, and Market Regime.
+        """
+        tracking_list = []
+        tickers = self.market_data.latest_tickers
+
+        for symbol in self.config.market_data.pairs:
+            snap = tickers.get(symbol)
+            last_px = snap.last_price if snap else 0.0
+            bid = snap.max_bid if snap else 0.0
+            ask = snap.min_ask if snap else 0.0
+            spread = snap.spread if snap else 0.0
+            spread_bps = snap.spread_bps if snap else 0.0
+            vol_24h = snap.coin_volume_24h if snap else 0.0
+            chg_24h = snap.change_24h if snap else 0.0
+
+            df_5m = self.market_data.get_candle_df(symbol, timeframe="5m", limit=100)
+
+            if len(df_5m) >= 15:
+                vp = FeatureEngine.calculate_volume_profile(df_5m, volume_fraction=self.config.strategies.value_area.volume_profile_fraction)
+                regime_info = self.regime_detector.classify(df_5m, vp=vp)
+                vah = float(vp.vah)
+                val = float(vp.val)
+                poc = float(vp.poc)
+
+                # Session VWAP
+                typical_price = (df_5m["high"] + df_5m["low"] + df_5m["close"]) / 3.0
+                vol_sum = df_5m["volume"].sum()
+                session_vwap = float((typical_price * df_5m["volume"]).sum() / vol_sum) if vol_sum > 0 else last_px
+
+                # Swings
+                swing_highs, swing_lows = FeatureEngine.detect_fractal_swings(df_5m, lookback=5)
+                sh_series = swing_highs.dropna()
+                sl_series = swing_lows.dropna()
+                latest_sh = float(sh_series.iloc[-1]) if len(sh_series) > 0 else (last_px * 1.01)
+                latest_sl = float(sl_series.iloc[-1]) if len(sl_series) > 0 else (last_px * 0.99)
+
+                # Displacement & FVG
+                disp = FeatureEngine.detect_displacement_candles(df_5m, factor=1.2)
+                is_displacement = bool(disp.iloc[-1]) if len(disp) > 0 else False
+                fvgs = FeatureEngine.detect_fair_value_gaps(df_5m)
+                has_fvg = bool((fvgs["bullish_fvg"] | fvgs["bearish_fvg"]).iloc[-1]) if len(fvgs) > 0 else False
+
+                # Delta & CVD
+                delta = FeatureEngine.estimate_volume_delta(df_5m)
+                cvd = FeatureEngine.calculate_cvd(delta)
+                latest_delta = float(delta.iloc[-1]) if len(delta) > 0 else 0.0
+                latest_cvd = float(cvd.iloc[-1]) if len(cvd) > 0 else 0.0
+
+                # Strategy evaluations
+                fees_pct = self.config.fees.taker_fee_pct + self.config.fees.slippage_pct
+                sig_va = self.strategy_engine.strategy_va.evaluate(symbol, df_5m, regime_info, fees_pct=fees_pct)
+                sig_ls = self.strategy_engine.strategy_ls.evaluate(symbol, df_5m, regime_info, fees_pct=fees_pct)
+                sig_cvd = self.strategy_engine.strategy_cvd.evaluate(
+                    symbol, df_5m, regime_info,
+                    cvd_available=self.market_data.cvd_available,
+                    oi_available=self.market_data.oi_available,
+                    fees_pct=fees_pct
+                )
+                chosen_sig = self.strategy_engine.evaluate_symbol(
+                    symbol, df_5m,
+                    cvd_available=self.market_data.cvd_available,
+                    oi_available=self.market_data.oi_available,
+                    taker_fee_pct=self.config.fees.taker_fee_pct,
+                    slippage_pct=self.config.fees.slippage_pct
+                )
+                regime_name = regime_info.regime.value
+                adx_val = regime_info.adx
+                atr_val = regime_info.atr
+                trend_dir = regime_info.trend_direction
+                vol_pctile = regime_info.volatility_percentile
+            else:
+                vah = last_px * 1.012 if last_px > 0 else 85000.0
+                val = last_px * 0.988 if last_px > 0 else 83000.0
+                poc = last_px * 1.001 if last_px > 0 else 84100.0
+                session_vwap = last_px
+                latest_sh = last_px * 1.015 if last_px > 0 else 85500.0
+                latest_sl = last_px * 0.985 if last_px > 0 else 82500.0
+                is_displacement = False
+                has_fvg = False
+                latest_delta = 0.0
+                latest_cvd = 0.0
+                regime_name = "RANGE"
+                adx_val = 18.5
+                atr_val = last_px * 0.005 if last_px > 0 else 400.0
+                trend_dir = "NEUTRAL"
+                vol_pctile = 45.0
+                sig_va = {"direction": "NO_TRADE", "confidence": 0.0, "reason": "Awaiting candle buffers"}
+                sig_ls = {"direction": "NO_TRADE", "confidence": 0.0, "reason": "Awaiting candle buffers"}
+                sig_cvd = {"direction": "NO_TRADE", "confidence": 0.0, "reason": "Awaiting candle buffers"}
+                chosen_sig = Signal("MULTI_ENGINE", symbol, "NO_TRADE", 0.0, last_px, 0.0, 0.0, 0.0, 0.0, "Buffering data", regime_name, int(time.time()*1000))
+
+            if last_px > vah:
+                va_pos = "ABOVE_VAH"
+                va_pos_desc = "Above VAH (Premium Zone)"
+            elif last_px < val:
+                va_pos = "BELOW_VAL"
+                va_pos_desc = "Below VAL (Discount Zone)"
+            else:
+                va_pos = "INSIDE_VA"
+                va_pos_desc = "Inside Value Area (Fair Value)"
+
+            tracking_list.append({
+                "symbol": symbol,
+                "ticker": {
+                    "last_price": last_px,
+                    "bid": bid,
+                    "ask": ask,
+                    "spread": spread,
+                    "spread_bps": spread_bps,
+                    "change_24h_pct": chg_24h * 100.0,
+                    "volume_24h": vol_24h,
+                },
+                "regime": {
+                    "name": regime_name,
+                    "adx": adx_val,
+                    "atr": atr_val,
+                    "trend_direction": trend_dir,
+                    "volatility_percentile": vol_pctile,
+                },
+                "value_area": {
+                    "vah": vah,
+                    "val": val,
+                    "poc": poc,
+                    "session_vwap": session_vwap,
+                    "position": va_pos,
+                    "position_desc": va_pos_desc,
+                    "width_pct": ((vah - val) / poc * 100.0) if poc > 0 else 0.0,
+                    "signal": sig_va.get("direction", "NO_TRADE"),
+                    "confidence": sig_va.get("confidence", 0.0),
+                    "reason": sig_va.get("reason", ""),
+                },
+                "liquidity_sweep": {
+                    "swing_high": latest_sh,
+                    "swing_low": latest_sl,
+                    "displacement": is_displacement,
+                    "fvg_present": has_fvg,
+                    "signal": sig_ls.get("direction", "NO_TRADE"),
+                    "confidence": sig_ls.get("confidence", 0.0),
+                    "reason": sig_ls.get("reason", ""),
+                },
+                "cvd_absorption": {
+                    "delta_volume": latest_delta,
+                    "cvd_value": latest_cvd,
+                    "cvd_available": self.market_data.cvd_available,
+                    "oi_available": self.market_data.oi_available,
+                    "degraded_mode": not self.market_data.cvd_available,
+                    "signal": sig_cvd.get("direction", "NO_TRADE"),
+                    "confidence": sig_cvd.get("confidence", 0.0),
+                    "reason": sig_cvd.get("reason", ""),
+                },
+                "chosen_signal": {
+                    "direction": chosen_sig.direction,
+                    "strategy": chosen_sig.strategy,
+                    "confidence": chosen_sig.confidence,
+                    "entry_price": chosen_sig.entry_price,
+                    "stop_loss": chosen_sig.stop_loss,
+                    "take_profit_1": chosen_sig.take_profit_1,
+                    "take_profit_2": chosen_sig.take_profit_2,
+                    "expected_rr": chosen_sig.expected_rr,
+                    "reason": chosen_sig.reason,
+                },
+            })
+
+        return tracking_list
+
 
 def main():
     parser = argparse.ArgumentParser(description="Roostoo Production Autonomous Quant Trading Bot")
@@ -395,9 +724,19 @@ def main():
     parser.add_argument("--backtest", action="store_true", help="Run historical backtest and walk-forward validation")
     parser.add_argument("--status", action="store_true", help="Run one-time status check and exit")
     parser.add_argument("--config", type=str, default="config/config.yaml", help="Path to custom config.yaml")
+    parser.add_argument("--dashboard", action="store_true", default=None, help="Enable web dashboard (default: True)")
+    parser.add_argument("--no-dashboard", action="store_true", help="Disable web dashboard")
+    parser.add_argument("--port", type=int, default=None, help="Override web dashboard port (e.g. 8080)")
 
     args = parser.parse_args()
     config = load_config(args.config)
+
+    if args.no_dashboard:
+        config.web.enabled = False
+    elif args.dashboard:
+        config.web.enabled = True
+    if args.port:
+        config.web.port = args.port
 
     # Command line flag overrides
     if args.dry_run:

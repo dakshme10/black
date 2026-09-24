@@ -66,6 +66,29 @@ The live terminal dashboard renders periodically with the following telemetry:
 
 ---
 
+## 2.1 Interactive Web Telemetry Dashboard
+
+The bot embeds an institutional-grade, dark-themed single-page web dashboard powered by FastAPI and real-time WebSocket broadcasting:
+
+- **URL**: `http://<ec2-ip-or-localhost>:8080/`
+- **Port Configuration**: Configurable in `config/config.yaml` or via environment variable `ROOSTOO_DASHBOARD_PORT=8080` (or CLI `--port 8080`).
+- **Security / Auth**: Optional Bearer token authentication via `ROOSTOO_DASHBOARD_TOKEN` (bypassed if left unset).
+- **Core Workspace Tabs**:
+  1. **Live Market & Strategies**: Real-time ticker feeds, quantitative regime detection, and microstructure metrics for Strategy A (Volume Profile 70% VAH/VAL/POC with visual price position gauge), Strategy B (Liquidity Sweeps & MSS with displacement flags and FVG detection), Strategy C (CVD delta & absorption status), and active prioritized signal evaluation.
+  2. **Positions**: Live open positions table with real-time unrealized PnL ($ and %), trailing stop ratchet level (+1.0R breakeven, +2.0R trailing ATR), TP1/TP2 targets, duration, and one-click "De-Risk to Cash" controls.
+  3. **Execution & Orders**: Detailed order ledger showing Client Order IDs, execution types (Limit/Market), filled prices, fees, and execution status.
+  4. **Cryptographic Audit Trail**: Live SHA-256 hash-chained decision audit feed with one-click full chain re-verification.
+  5. **Telemetry & Logs**: Real-time console log viewer, token-bucket rate limiter telemetry, and safety parameters.
+- **Interactive Command Controls**:
+  - `KILL / DE-RISK`: Emergency market liquidation of all open positions with permanent circuit breaker activation.
+  - `PAUSE / RESUME`: Operator hold switch to halt/resume entry scanning without affecting open position trailing stops.
+  - `RECONCILE`: Force on-demand balance and position synchronization against exchange truth.
+  - `RESET RISK`: Operator reset for the 6-hour cooling freeze after drawdown inspection.
+  - `QUICK TRADE`: Sized trade execution through the central risk manager.
+
+---
+
+
 ## 3. Cryptographic Audit Trail Verification
 
 The bot includes built-in verification of the SHA-256 hash chain to prove that log records have not been altered, deleted, or inserted out of order:

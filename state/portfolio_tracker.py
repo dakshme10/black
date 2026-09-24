@@ -153,9 +153,10 @@ class PortfolioTracker:
             if side.upper() == "BUY":
                 self.cash -= (notional + fee)
 
-                if symbol in self.positions and self.positions[symbol].quantity > 0:
+                pos = self.positions.get(symbol)
+                if pos is not None and pos.quantity > 0:
                     # Merge with existing position using weighted average
-                    existing = self.positions[symbol]
+                    existing = pos
                     total_qty = existing.quantity + quantity
                     avg_px = (existing.quantity * existing.entry_price + quantity * price) / total_qty
                     existing.quantity = total_qty
@@ -185,13 +186,14 @@ class PortfolioTracker:
             elif side.upper() == "SELL":
                 self.cash += (notional - fee)
 
-                if symbol in self.positions:
-                    pos = self.positions[symbol]
+                pos = self.positions.get(symbol)
+                if pos is not None and pos.quantity > 0:
                     sold_qty = min(quantity, pos.quantity)
                     trade_pnl = sold_qty * (price - pos.entry_price) - fee
                     pos.realized_pnl += trade_pnl
                     self.realized_pnl += trade_pnl
                     pos.quantity -= sold_qty
+
 
                     if pos.quantity <= 1e-7:
                         # Fully closed

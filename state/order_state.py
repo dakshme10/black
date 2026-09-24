@@ -158,6 +158,17 @@ class OrderStateManager:
         with self._lock:
             return [o for o in self._orders_by_client_id.values() if o.status == OrderStatus.UNKNOWN]
 
+    def get_history(self, limit: int = 100) -> List[Order]:
+        """Return orders in reverse chronological order."""
+        with self._lock:
+            all_orders = sorted(
+                self._orders_by_client_id.values(),
+                key=lambda o: o.create_timestamp,
+                reverse=True,
+            )
+            return all_orders[:limit]
+
+
     def _persist(self) -> None:
         """Save order state atomically to file."""
         try:

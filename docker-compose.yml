@@ -12,7 +12,10 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
+    ports:
+      - "8080:8080"
     volumes:
+
       - ./data:/app/data
       - ./logs:/app/logs
       - ./config:/app/config

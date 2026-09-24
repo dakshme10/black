@@ -109,10 +109,17 @@ class MarketDataManager:
                 {"cvd_available": False, "oi_available": False},
             )
 
+    @property
+    def latest_tickers(self) -> Dict[str, TickerSnapshot]:
+        """Thread-safe snapshot of latest tickers by pair."""
+        with self._lock:
+            return dict(self._latest_tickers)
+
     def is_stale(self, pair: str) -> bool:
         """
         Return True if market data for the pair has not updated within stale_threshold_seconds.
         """
+
         with self._lock:
             snap = self._latest_tickers.get(pair)
             if snap is None:

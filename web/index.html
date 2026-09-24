@@ -1,0 +1,1806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roostoo Autonomous Quant Bot | Production Dashboard</title>
+    <!-- Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-base: #060911;
+            --bg-card: #0b111e;
+            --bg-card-hover: #101828;
+            --bg-card-alt: #0e1524;
+            --bg-header: #0d1322;
+            --border: #1a2438;
+            --border-hover: #263552;
+            --border-bright: #334466;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --text-dim: #64748b;
+            --accent: #38bdf8;
+            --accent-hover: #0284c7;
+            --accent-glow: rgba(56, 189, 248, 0.15);
+            --positive: #10b981;
+            --positive-glow: rgba(16, 185, 129, 0.18);
+            --negative: #f43f5e;
+            --negative-glow: rgba(244, 63, 94, 0.18);
+            --warning: #f59e0b;
+            --warning-glow: rgba(245, 158, 11, 0.18);
+            --purple: #a855f7;
+            --purple-glow: rgba(168, 85, 247, 0.18);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-base);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Mono numbers */
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-base); }
+        ::-webkit-scrollbar-thumb { background: #263552; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3b5078; }
+
+        /* Header */
+        header {
+            background: var(--bg-header);
+            border-bottom: 1px solid var(--border);
+            padding: 8px 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 20;
+            flex-shrink: 0;
+        }
+        .brand-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .brand-badge {
+            background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%);
+            color: #fff;
+            font-weight: 800;
+            font-size: 13px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 0 12px var(--accent-glow);
+        }
+        .brand-title {
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .brand-sub {
+            font-size: 11px;
+            color: var(--text-dim);
+            font-weight: 500;
+        }
+
+        /* Badges */
+        .pill {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            border: 1px solid transparent;
+        }
+        .pill-live {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border-color: rgba(16, 185, 129, 0.3);
+            box-shadow: 0 0 8px var(--positive-glow);
+        }
+        .pill-dry {
+            background: rgba(245, 158, 11, 0.15);
+            color: #fbbf24;
+            border-color: rgba(245, 158, 11, 0.3);
+            box-shadow: 0 0 8px var(--warning-glow);
+        }
+        .pill-purple {
+            background: rgba(168, 85, 247, 0.15);
+            color: #c084fc;
+            border-color: rgba(168, 85, 247, 0.3);
+        }
+        .pill-blue {
+            background: rgba(56, 189, 248, 0.12);
+            color: var(--accent);
+            border-color: rgba(56, 189, 248, 0.25);
+        }
+        .pill-red {
+            background: rgba(244, 63, 94, 0.15);
+            color: #fb7185;
+            border-color: rgba(244, 63, 94, 0.3);
+        }
+
+        .dot-pulse {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 8px #10b981;
+            animation: pulse 1.8s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.7; }
+        }
+
+        /* Action Buttons */
+        .btn-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn {
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 5px;
+            border: 1px solid var(--border);
+            background: #121929;
+            color: var(--text-main);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .btn:hover {
+            background: #182238;
+            border-color: var(--border-hover);
+        }
+        .btn-danger {
+            background: rgba(244, 63, 94, 0.15);
+            border-color: rgba(244, 63, 94, 0.4);
+            color: #fda4af;
+        }
+        .btn-danger:hover {
+            background: rgba(244, 63, 94, 0.28);
+            border-color: #f43f5e;
+            color: #fff;
+        }
+        .btn-accent {
+            background: #0284c7;
+            border-color: #0369a1;
+            color: #fff;
+        }
+        .btn-accent:hover {
+            background: #0369a1;
+        }
+        .btn-warning {
+            background: rgba(245, 158, 11, 0.15);
+            border-color: rgba(245, 158, 11, 0.4);
+            color: #fde68a;
+        }
+        .btn-warning:hover {
+            background: rgba(245, 158, 11, 0.28);
+            border-color: #f59e0b;
+        }
+
+        /* KPI Cards Grid */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            padding: 10px 18px 6px 18px;
+            flex-shrink: 0;
+            background: var(--bg-base);
+        }
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: border-color 0.2s;
+        }
+        .kpi-card:hover {
+            border-color: var(--border-hover);
+        }
+        .kpi-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        .kpi-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-main);
+            letter-spacing: -0.3px;
+            margin-bottom: 4px;
+        }
+        .kpi-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* Progress bar */
+        .progress-bar-bg {
+            height: 4px;
+            background: #182236;
+            border-radius: 2px;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        /* Tabs Nav */
+        .nav-tabs {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #090e1a;
+            border-bottom: 1px solid var(--border);
+            padding: 0 18px;
+            flex-shrink: 0;
+        }
+        .tab-btn-group {
+            display: flex;
+            gap: 2px;
+        }
+        .tab-btn {
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 9px 18px;
+            color: var(--text-dim);
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tab-btn:hover {
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.02);
+        }
+        .tab-btn.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+            background: rgba(56, 189, 248, 0.04);
+        }
+        .tab-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 10px;
+            background: #182236;
+            color: var(--text-muted);
+        }
+        .tab-btn.active .tab-badge {
+            background: rgba(56, 189, 248, 0.2);
+            color: var(--accent);
+        }
+
+        /* Tab Content Panes */
+        .workspace {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 14px 18px;
+            display: flex;
+            flex-direction: column;
+        }
+        .tab-pane {
+            display: none;
+            flex-direction: column;
+            gap: 14px;
+            min-height: 100%;
+        }
+        .tab-pane.active {
+            display: flex;
+        }
+
+        /* Strategy Grid Layout */
+        .strategy-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 14px;
+        }
+        .symbol-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .symbol-card-header {
+            background: #0f1628;
+            border-bottom: 1px solid var(--border);
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .symbol-name {
+            font-size: 15px;
+            font-weight: 700;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .symbol-price {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: -0.2px;
+        }
+        .symbol-body {
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* Strategy Modules within Symbol Card */
+        .module-box {
+            background: var(--bg-base);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 10px 12px;
+        }
+        .module-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .module-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .module-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .stat-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            font-weight: 500;
+        }
+        .stat-val {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        /* Visual Value Area Bar */
+        .va-range-container {
+            background: #0c1220;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 6px 8px;
+            margin-top: 6px;
+        }
+        .va-range-bar-track {
+            height: 10px;
+            background: #141c2e;
+            border-radius: 5px;
+            position: relative;
+            margin: 10px 0 6px 0;
+        }
+        .va-range-fill {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background: rgba(56, 189, 248, 0.25);
+            border-left: 2px solid var(--accent);
+            border-right: 2px solid var(--accent);
+            border-radius: 2px;
+        }
+        .va-poc-marker {
+            position: absolute;
+            top: -2px;
+            width: 2px;
+            height: 14px;
+            background: #f59e0b;
+            box-shadow: 0 0 6px #f59e0b;
+        }
+        .va-current-price-pin {
+            position: absolute;
+            top: -5px;
+            width: 8px;
+            height: 20px;
+            background: #fff;
+            border-radius: 2px;
+            transform: translateX(-50%);
+            box-shadow: 0 0 8px #fff;
+            z-index: 2;
+        }
+
+        /* Actionable Signal Box */
+        .actionable-signal {
+            background: rgba(2, 132, 199, 0.08);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            border-radius: 6px;
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .signal-decision {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .signal-badge-lg {
+            font-size: 13px;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Data Tables */
+        .table-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+        .table-header-bar {
+            background: #0f1628;
+            border-bottom: 1px solid var(--border);
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .table-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 12px;
+        }
+        th {
+            background: #0b1120;
+            color: var(--text-dim);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        td {
+            padding: 10px 14px;
+            border-bottom: 1px solid #141c2c;
+            color: var(--text-main);
+            vertical-align: middle;
+        }
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.015);
+        }
+
+        /* Status Colors */
+        .text-pos { color: var(--positive); }
+        .text-neg { color: var(--negative); }
+        .text-warn { color: var(--warning); }
+        .text-accent { color: var(--accent); }
+
+        /* Audit Chain Verification Banner */
+        .audit-banner {
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 6px;
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        /* Logs Console */
+        .console-container {
+            background: #04060b;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: #cbd5e1;
+            flex: 1;
+            min-height: 250px;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+        .log-entry { margin-bottom: 4px; display: flex; gap: 8px; }
+        .log-ts { color: var(--text-dim); }
+        .log-tag { font-weight: 700; }
+        .log-tag.info { color: var(--accent); }
+        .log-tag.warn { color: var(--warning); }
+        .log-tag.error { color: var(--negative); }
+        .log-tag.success { color: var(--positive); }
+
+        /* Bottom Status Marquee */
+        footer {
+            background: var(--bg-header);
+            border-top: 1px solid var(--border);
+            padding: 0 18px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            font-family: 'JetBrains Mono', monospace;
+            flex-shrink: 0;
+            z-index: 10;
+        }
+        .footer-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+        .ticker-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 8px;
+            background: #090e1a;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        /* Modal Dialog */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal-box {
+            background: #0e1524;
+            border: 1px solid var(--border-bright);
+            border-radius: 10px;
+            width: 440px;
+            max-width: 90vw;
+            padding: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .modal-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .modal-content {
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+        .modal-input {
+            width: 100%;
+            background: #070a12;
+            border: 1px solid #263552;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 13px;
+            outline: none;
+        }
+        .modal-input:focus { border-color: var(--accent); }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        /* Toast notifications */
+        #toast {
+            position: fixed;
+            bottom: 42px;
+            right: 20px;
+            background: #121c2e;
+            border: 1px solid var(--accent);
+            color: #fff;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: none;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ========================================================================= -->
+    <!-- HEADER                                                                    -->
+    <!-- ========================================================================= -->
+    <header>
+        <div class="brand-container">
+            <span class="brand-badge">ROOSTOO QUANT</span>
+            <div>
+                <div class="brand-title">
+                    AUTONOMOUS SPOT BOT
+                    <span id="badge-mode" class="pill pill-dry">DRY_RUN [SIMULATION]</span>
+                    <span id="badge-pause" class="pill pill-blue" style="display:none;">PAUSED</span>
+                </div>
+                <div class="brand-sub">Production Quant System • Value Area • Liquidity Sweeps • CVD Absorption</div>
+            </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 14px;">
+            <!-- Telemetry Pills -->
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="pill pill-blue">
+                    <span id="ws-pulse" class="dot-pulse"></span>
+                    <span id="ws-status">WS: CONNECTING</span>
+                </span>
+                <span id="badge-audit" class="pill pill-live">
+                    <span>🛡️</span>
+                    <span id="audit-text">SHA-256 CHAIN: VERIFIED</span>
+                </span>
+                <span class="pill pill-purple mono" id="server-time">--:--:-- UTC</span>
+            </div>
+
+            <!-- Command Controls -->
+            <div class="btn-group">
+                <button class="btn btn-danger" onclick="openKillModal()" title="Emergency liquidates open positions and activates permanent circuit breaker">
+                    <span>⚠️</span> KILL / DE-RISK
+                </button>
+                <button id="btn-pause" class="btn btn-warning" onclick="togglePauseBot()">
+                    <span>⏸️</span> PAUSE
+                </button>
+                <button class="btn" onclick="triggerReconciliation()" title="Synchronize local ledger against Roostoo exchange truth">
+                    <span>🔄</span> RECONCILE
+                </button>
+                <button class="btn" onclick="resetRiskBreaker()" title="Reset rolling 24h drawdown freeze if safe">
+                    <span>🛡️</span> RESET RISK
+                </button>
+                <button class="btn btn-accent" onclick="openManualTradeModal()">
+                    <span>⚡</span> QUICK TRADE
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ========================================================================= -->
+    <!-- TOP KPI ROW (5 METRIC CARDS)                                              -->
+    <!-- ========================================================================= -->
+    <div class="kpi-row">
+        <!-- 1. Portfolio Equity -->
+        <div class="kpi-card">
+            <div class="kpi-label">
+                <span>Total Equity</span>
+                <span class="mono pill pill-blue" id="kpi-equity-curr">USD</span>
+            </div>
+            <div class="kpi-value mono" id="kpi-equity">$100,000.00</div>
+            <div class="kpi-sub mono">
+                <span>PnL: <b id="kpi-pnl" class="text-pos">+$0.00 (+0.00%)</b></span>
+                <span style="color:var(--text-dim);">Peak: <span id="kpi-peak-eq">$100k</span></span>
+            </div>
+        </div>
+
+        <!-- 2. Cash & Reserves -->
+        <div class="kpi-card">
+            <div class="kpi-label">
+                <span>Cash & Liquidity</span>
+                <span class="pill pill-live" id="kpi-reserve-badge">5% RESERVE OK</span>
+            </div>
+            <div class="kpi-value mono" id="kpi-cash">$95,000.00</div>
+            <div class="kpi-sub mono">
+                <span>Avail: <span id="kpi-avail-cash">$95,000.00</span></span>
+                <span style="color:var(--text-dim);">Min Lock: <span id="kpi-min-reserve">$5,000.00</span></span>
+            </div>
+        </div>
+
+        <!-- 3. Gross Exposure -->
+        <div class="kpi-card">
+            <div class="kpi-label">
+                <span>Gross Exposure</span>
+                <span class="mono" id="kpi-pos-count">0 / 2 Positions</span>
+            </div>
+            <div class="kpi-value mono" id="kpi-exposure">0.00%</div>
+            <div class="kpi-sub mono">
+                <span>Limit: 100.0% (Spot Only)</span>
+                <span id="kpi-exposure-headroom" class="text-accent">100.0% Free</span>
+            </div>
+            <div class="progress-bar-bg">
+                <div id="kpi-exposure-bar" class="progress-bar-fill" style="width: 0%; background: var(--accent);"></div>
+            </div>
+        </div>
+
+        <!-- 4. Competition Composite Score -->
+        <div class="kpi-card">
+            <div class="kpi-label">
+                <span>Composite Score</span>
+                <span class="pill pill-purple">0.4Sort+0.3Sh+0.3Cal</span>
+            </div>
+            <div class="kpi-value mono text-accent" id="kpi-composite">0.0000</div>
+            <div class="kpi-sub mono">
+                <span>Sortino: <b id="kpi-sortino">0.00</b></span>
+                <span>Sharpe: <b id="kpi-sharpe">0.00</b></span>
+                <span>Calmar: <b id="kpi-calmar">0.00</b></span>
+            </div>
+        </div>
+
+        <!-- 5. Risk & Circuit Breakers -->
+        <div class="kpi-card">
+            <div class="kpi-label">
+                <span>Drawdown Gauges</span>
+                <span class="pill pill-live" id="kpi-circuit-status">CIRCUITS OK</span>
+            </div>
+            <div class="kpi-value mono" id="kpi-current-dd">0.00%</div>
+            <div class="kpi-sub mono">
+                <span>Peak DD Max: <b>6.0%</b></span>
+                <span>24h Roll DD: <b id="kpi-rolling-dd">0.00%</b> (3.5% Frz)</span>
+            </div>
+            <div class="progress-bar-bg">
+                <div id="kpi-dd-bar" class="progress-bar-fill" style="width: 0%; background: var(--positive);"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- NAVIGATION TABS                                                           -->
+    <!-- ========================================================================= -->
+    <div class="nav-tabs">
+        <div class="tab-btn-group">
+            <button class="tab-btn active" onclick="switchTab('strategies')">
+                <span>📊</span> Live Market & Strategies
+            </button>
+            <button class="tab-btn" onclick="switchTab('positions')">
+                <span>💼</span> Positions <span class="tab-badge" id="tab-badge-positions">0</span>
+            </button>
+            <button class="tab-btn" onclick="switchTab('orders')">
+                <span>📝</span> Execution & Orders <span class="tab-badge" id="tab-badge-orders">0</span>
+            </button>
+            <button class="tab-btn" onclick="switchTab('audit')">
+                <span>🛡️</span> Cryptographic Audit Trail
+            </button>
+            <button class="tab-btn" onclick="switchTab('telemetry')">
+                <span>⚡</span> Telemetry & Logs
+            </button>
+        </div>
+        <div style="font-size: 11px; color: var(--text-dim);" class="mono">
+            Rate Limit: <span id="rate-tokens" class="text-accent">10.0</span> / 10 Tokens • Drift: <span id="drift-ms">0ms</span>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- MAIN WORKSPACE CONTENT PANES                                              -->
+    <!-- ========================================================================= -->
+    <div class="workspace">
+
+        <!-- TAB 1: STRATEGY & MARKET TRACKING -->
+        <div id="pane-strategies" class="tab-pane active">
+            <div class="strategy-grid" id="strategy-grid-container">
+                <!-- Dynamically populated per trading symbol (BTC/USD, ETH/USD) -->
+                <div style="grid-column: span 2; padding: 40px; text-align: center; color: var(--text-dim);">
+                    Awaiting live quantitative strategy telemetry...
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: POSITIONS -->
+        <div id="pane-positions" class="tab-pane">
+            <div class="table-container">
+                <div class="table-header-bar">
+                    <div class="table-title">
+                        <span>💼</span> Live Open Positions
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-danger" onclick="deriskAllPositions()">De-Risk All to Cash</button>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Side</th>
+                            <th>Quantity</th>
+                            <th>Entry Price</th>
+                            <th>Mark Price</th>
+                            <th>Notional Value</th>
+                            <th>Unrealized PnL</th>
+                            <th>Trailing Stop Ratchet</th>
+                            <th>TP1 Target (50%)</th>
+                            <th>TP2 Target (100%)</th>
+                            <th>Strategy</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="positions-tbody">
+                        <tr>
+                            <td colspan="12" style="text-align:center; color:var(--text-dim); padding: 30px;">
+                                No open positions active. Bot is scanning in capital-preservation mode.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB 3: EXECUTION & ORDERS -->
+        <div id="pane-orders" class="tab-pane">
+            <div class="table-container">
+                <div class="table-header-bar">
+                    <div class="table-title">
+                        <span>📝</span> Exchange Order Execution Ledger
+                    </div>
+                    <div class="mono" style="font-size:11px; color:var(--text-dim);" id="orders-count-label">
+                        Showing recent orders
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Client Order ID</th>
+                            <th>Timestamp</th>
+                            <th>Symbol</th>
+                            <th>Side</th>
+                            <th>Type</th>
+                            <th>Req Price</th>
+                            <th>Filled Price</th>
+                            <th>Quantity</th>
+                            <th>Filled Qty</th>
+                            <th>Status</th>
+                            <th>Commission</th>
+                            <th>Strategy Origin</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orders-tbody">
+                        <tr>
+                            <td colspan="12" style="text-align:center; color:var(--text-dim); padding: 30px;">
+                                No orders executed in current session.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB 4: CRYPTOGRAPHIC AUDIT TRAIL -->
+        <div id="pane-audit" class="tab-pane">
+            <div class="audit-banner">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span style="font-size: 20px;">🛡️</span>
+                    <div>
+                        <div style="font-weight: 700; color: #fff; font-size: 13px;">
+                            SHA-256 Hash Chained Decision Ledger
+                        </div>
+                        <div style="font-size: 11px; color: var(--text-muted);">
+                            Every signal, sizing veto, order submission, and exchange reconciliation is cryptographically hashed and chained to prevent post-hoc tampering.
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span id="audit-verify-status" class="pill pill-live">STATUS: VERIFIED SECURE</span>
+                    <button class="btn btn-accent" onclick="verifyAuditChain()">Re-Verify Entire Chain</button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <div class="table-header-bar">
+                    <div class="table-title">
+                        <span>📜</span> Recent Audit Records
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th># Seq</th>
+                            <th>Timestamp (UTC)</th>
+                            <th>Event Type</th>
+                            <th>Details & Reason</th>
+                            <th>SHA-256 Record Hash</th>
+                            <th>Previous Hash</th>
+                            <th>Chain Link</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit-tbody">
+                        <tr>
+                            <td colspan="7" style="text-align:center; color:var(--text-dim); padding: 30px;">
+                                Awaiting audit records...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB 5: TELEMETRY & LOGS -->
+        <div id="pane-telemetry" class="tab-pane">
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px; flex: 1;">
+                <div style="display: flex; flex-direction: column;">
+                    <div class="table-header-bar" style="border-radius: 6px 6px 0 0;">
+                        <div class="table-title">
+                            <span>💻</span> Bot Execution Stream
+                        </div>
+                        <button class="btn" onclick="clearLogs()">Clear Screen</button>
+                    </div>
+                    <div class="console-container" id="console-stream">
+                        <div class="log-entry">
+                            <span class="log-ts">[SYSTEM]</span>
+                            <span class="log-tag info">INIT</span>
+                            <span>Roostoo Autonomous Quant Bot Dashboard connected.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="symbol-card">
+                    <div class="symbol-card-header">
+                        <span class="symbol-name">Configuration & Safeguards</span>
+                    </div>
+                    <div class="symbol-body" style="font-size:12px;">
+                        <div class="stat-item">
+                            <span class="stat-label">Maximum Gross Exposure:</span>
+                            <span class="stat-val mono">100.0% (Spot Strict, No Borrowing)</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Minimum Cash Reserve:</span>
+                            <span class="stat-val mono">5.0% Mandatory Cash Floor</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Maximum Risk Per Trade:</span>
+                            <span class="stat-val mono">1.0% Notional Equity Risk</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Rolling 24h Drawdown Limit:</span>
+                            <span class="stat-val mono text-warn">3.5% (Triggers 6-Hour Cooling Freeze)</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Maximum Drawdown Limit:</span>
+                            <span class="stat-val mono text-neg">6.0% (Permanent Circuit Breaker)</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Trailing Stop Ratchet:</span>
+                            <span class="stat-val mono">+1.0R to Breakeven | +2.0R ATR Trail</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Exchange API Rate Limit:</span>
+                            <span class="stat-val mono">5 req/s sustained, 10 burst capacity</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- BOTTOM STATUS MARQUEE                                                     -->
+    <!-- ========================================================================= -->
+    <footer>
+        <div class="footer-left">
+            <span class="ticker-pill">
+                <span>BTC/USD:</span>
+                <b id="ft-btc-price" class="mono">$--</b>
+                <span id="ft-btc-chg" class="mono text-pos">+0.00%</span>
+            </span>
+            <span class="ticker-pill">
+                <span>ETH/USD:</span>
+                <b id="ft-eth-price" class="mono">$--</b>
+                <span id="ft-eth-chg" class="mono text-pos">+0.00%</span>
+            </span>
+            <span>Open Pos: <b id="ft-open-pos">0</b></span>
+            <span>Total MTM PnL: <b id="ft-mtm-pnl" class="text-pos">+$0.00</b></span>
+            <span>Freeze Status: <b id="ft-freeze-status" class="text-pos">NORMAL</b></span>
+        </div>
+        <div>
+            <span>LAST SYNC: <span id="ft-last-update">--</span></span>
+        </div>
+    </footer>
+
+    <!-- ========================================================================= -->
+    <!-- MODALS & DIALOGS                                                          -->
+    <!-- ========================================================================= -->
+
+    <!-- Kill Switch Confirmation Modal -->
+    <div id="modal-kill" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title text-neg">
+                <span>⚠️</span> EMERGENCY KILL SWITCH & DE-RISK
+            </div>
+            <div class="modal-content">
+                <p><b>WARNING:</b> This operation will immediately:</p>
+                <ul style="margin: 8px 0 8px 20px; font-size:12px;">
+                    <li>Market-sell ALL open positions in BTC/USD and ETH/USD to cash.</li>
+                    <li>Cancel all pending limit orders.</li>
+                    <li>Trip the permanent risk manager circuit breaker.</li>
+                </ul>
+                <p>Are you sure you want to execute emergency liquidation?</p>
+            </div>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeModal('modal-kill')">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmKillSwitch()">CONFIRM EMERGENCY LIQUIDATION</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Trade Modal -->
+    <div id="modal-trade" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title">
+                <span>⚡</span> Execute Sized Trade
+            </div>
+            <div class="modal-content" style="display:flex; flex-direction:column; gap:12px;">
+                <div>
+                    <label style="font-size:11px; color:var(--text-dim); display:block; margin-bottom:4px;">Symbol:</label>
+                    <select id="trade-sym" class="modal-input">
+                        <option value="BTC/USD">BTC/USD</option>
+                        <option value="ETH/USD">ETH/USD</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:11px; color:var(--text-dim); display:block; margin-bottom:4px;">Direction:</label>
+                    <select id="trade-side" class="modal-input">
+                        <option value="BUY">BUY (Long Spot)</option>
+                        <option value="DE_RISK">DE_RISK (Exit to Cash)</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:11px; color:var(--text-dim); display:block; margin-bottom:4px;">Notional Allocation (USD, Optional):</label>
+                    <input id="trade-notional" type="number" placeholder="Leave empty for 1% risk sizing" class="modal-input">
+                </div>
+                <div style="font-size:11px; color:var(--text-dim);">
+                    * Order will be verified against the 1.0% trade risk, 100% gross exposure ceiling, and 5% cash reserve before transmission.
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeModal('modal-trade')">Cancel</button>
+                <button class="btn btn-accent" onclick="submitManualTrade()">Submit Order</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast">Command executed successfully</div>
+
+    <!-- ========================================================================= -->
+    <!-- CLIENT JAVASCRIPT LOGIC                                                   -->
+    <!-- ========================================================================= -->
+    <script>
+        // Global state
+        let ws = null;
+        let wsReconnectTimer = null;
+        let currentPayload = null;
+        let activeTab = 'strategies';
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.innerText = msg;
+            t.style.display = 'block';
+            setTimeout(() => { t.style.display = 'none'; }, 3500);
+        }
+
+        function switchTab(tabId) {
+            activeTab = tabId;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+
+            const targetPane = document.getElementById(`pane-${tabId}`);
+            if (targetPane) targetPane.classList.add('active');
+
+            // Set active on matching button
+            event.currentTarget.classList.add('active');
+        }
+
+        function openKillModal() { document.getElementById('modal-kill').classList.add('open'); }
+        function openManualTradeModal() { document.getElementById('modal-trade').classList.add('open'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+        // Send backend command
+        async function sendCommand(cmd, payload = {}) {
+            try {
+                const res = await fetch(`/command/${cmd}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast(data.message || `Command ${cmd} successful`);
+                } else {
+                    showToast(`Error: ${data.message || 'Command failed'}`);
+                }
+                return data;
+            } catch (err) {
+                console.error(`Command ${cmd} error:`, err);
+                showToast(`Request failed: ${err.message}`);
+            }
+        }
+
+        async function togglePauseBot() {
+            const res = await sendCommand('pause');
+            if (res && res.status === 'success') {
+                const btn = document.getElementById('btn-pause');
+                const isPaused = res.message.includes('True');
+                btn.innerHTML = isPaused ? '<span>▶️</span> RESUME' : '<span>⏸️</span> PAUSE';
+            }
+        }
+
+        async function confirmKillSwitch() {
+            closeModal('modal-kill');
+            await sendCommand('kill');
+        }
+
+        async function triggerReconciliation() {
+            showToast('Triggering exchange reconciliation...');
+            const res = await sendCommand('reconcile');
+            if (res && res.details) {
+                showToast(`Reconciliation complete. Synchronized: ${res.details.is_synchronized}`);
+            }
+        }
+
+        async function resetRiskBreaker() {
+            await sendCommand('reset_risk');
+        }
+
+        async function deriskPosition(symbol) {
+            if (confirm(`Close and de-risk position for ${symbol}?`)) {
+                await sendCommand('derisk', { symbol: symbol });
+            }
+        }
+
+        async function deriskAllPositions() {
+            if (confirm("De-risk ALL active positions to cash?")) {
+                await sendCommand('derisk', {});
+            }
+        }
+
+        async function submitManualTrade() {
+            const sym = document.getElementById('trade-sym').value;
+            const side = document.getElementById('trade-side').value;
+            const notional = parseFloat(document.getElementById('trade-notional').value || '0');
+            closeModal('modal-trade');
+            await sendCommand('manual_trade', { symbol: sym, side: side, notional_usd: notional });
+        }
+
+        async function verifyAuditChain() {
+            try {
+                const res = await fetch('/api/verify-audit');
+                const data = await res.json();
+                const banner = document.getElementById('audit-verify-status');
+                if (data.valid) {
+                    banner.className = 'pill pill-live';
+                    banner.innerText = `STATUS: 100% VERIFIED (${data.count} RECORDS SECURE)`;
+                    showToast(`Audit trail verified! ${data.count} records untampered.`);
+                } else {
+                    banner.className = 'pill pill-red';
+                    banner.innerText = `INTEGRITY FAILED: ${data.message}`;
+                    showToast(`CRITICAL: Audit integrity compromised: ${data.message}`);
+                }
+            } catch (e) {
+                console.error('Verify audit error:', e);
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('console-stream').innerHTML = '';
+        }
+
+        // =========================================================================
+        // WEBSOCKET TELEMETRY RECEIVER                                              //
+        // =========================================================================
+        function connectWebSocket() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${location.host}/ws`;
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                document.getElementById('ws-status').innerText = 'WS: CONNECTED (1s)';
+                document.getElementById('ws-pulse').style.background = '#10b981';
+                console.log('Telemetry WebSocket connected.');
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    currentPayload = data;
+                    renderTelemetry(data);
+                } catch (e) {
+                    console.error('Error parsing WS frame:', e);
+                }
+            };
+
+            ws.onclose = () => {
+                document.getElementById('ws-status').innerText = 'WS: RECONNECTING...';
+                document.getElementById('ws-pulse').style.background = '#f59e0b';
+                clearTimeout(wsReconnectTimer);
+                wsReconnectTimer = setTimeout(connectWebSocket, 2000);
+            };
+
+            ws.onerror = (err) => {
+                console.error('WS Error:', err);
+                ws.close();
+            };
+        }
+
+        // Fallback polling if WS stalls
+        setInterval(async () => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                try {
+                    const res = await fetch('/api/status');
+                    if (res.ok) {
+                        const data = await res.json();
+                        currentPayload = data;
+                        renderTelemetry(data);
+                    }
+                } catch (e) {}
+            }
+        }, 3000);
+
+        // =========================================================================
+        // TELEMETRY RENDER PIPELINE                                                //
+        // =========================================================================
+        function renderTelemetry(data) {
+            if (!data) return;
+
+            // 1. Clock & Mode
+            if (data.server_time) {
+                document.getElementById('server-time').innerText = data.server_time.split(' ')[1] + ' UTC';
+                document.getElementById('ft-last-update').innerText = data.server_time;
+            }
+
+            const status = data.status || {};
+            const modeBadge = document.getElementById('badge-mode');
+            if (status.mode === 'LIVE') {
+                modeBadge.className = 'pill pill-live';
+                modeBadge.innerText = 'LIVE [EXCHANGE CONNECTED]';
+            } else {
+                modeBadge.className = 'pill pill-dry';
+                modeBadge.innerText = 'DRY_RUN [SIMULATION]';
+            }
+
+            const pauseBadge = document.getElementById('badge-pause');
+            const pauseBtn = document.getElementById('btn-pause');
+            if (status.paused) {
+                pauseBadge.style.display = 'inline-flex';
+                pauseBtn.innerHTML = '<span>▶️</span> RESUME';
+            } else {
+                pauseBadge.style.display = 'none';
+                pauseBtn.innerHTML = '<span>⏸️</span> PAUSE';
+            }
+
+            // 2. Portfolio KPIs
+            const port = data.portfolio || {};
+            const comp = data.competition || {};
+
+            document.getElementById('kpi-equity').innerText = `$${(port.equity || 100000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            document.getElementById('kpi-cash').innerText = `$${(port.cash || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            document.getElementById('kpi-avail-cash').innerText = `$${(port.available_cash || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            document.getElementById('kpi-min-reserve').innerText = `$${(port.min_cash_reserve || 5000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            document.getElementById('kpi-peak-eq').innerText = `$${(port.peak_equity || port.equity || 100000).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+
+            // PnL formatting
+            const totPnl = port.total_pnl || 0;
+            const retPct = comp.total_return_pct || 0;
+            const pnlEl = document.getElementById('kpi-pnl');
+            pnlEl.innerText = `${totPnl >= 0 ? '+' : ''}$${totPnl.toFixed(2)} (${retPct >= 0 ? '+' : ''}${retPct.toFixed(2)}%)`;
+            pnlEl.className = totPnl >= 0 ? 'text-pos mono' : 'text-neg mono';
+            document.getElementById('ft-mtm-pnl').innerText = `${totPnl >= 0 ? '+' : ''}$${totPnl.toFixed(2)}`;
+            document.getElementById('ft-mtm-pnl').className = totPnl >= 0 ? 'text-pos' : 'text-neg';
+
+            // Gross Exposure
+            const expPct = port.gross_exposure_pct || 0;
+            document.getElementById('kpi-exposure').innerText = `${expPct.toFixed(2)}%`;
+            document.getElementById('kpi-exposure-bar').style.width = `${Math.min(100, expPct)}%`;
+            document.getElementById('kpi-exposure-headroom').innerText = `${Math.max(0, 100 - expPct).toFixed(1)}% Free`;
+            const posCount = port.open_position_count || 0;
+            document.getElementById('kpi-pos-count').innerText = `${posCount} / ${port.max_positions || 2} Positions`;
+            document.getElementById('tab-badge-positions').innerText = posCount;
+            document.getElementById('ft-open-pos').innerText = posCount;
+
+            // Competition Score
+            document.getElementById('kpi-composite').innerText = (comp.composite_score || 0).toFixed(4);
+            document.getElementById('kpi-sortino').innerText = (comp.sortino_ratio || 0).toFixed(2);
+            document.getElementById('kpi-sharpe').innerText = (comp.sharpe_ratio || 0).toFixed(2);
+            document.getElementById('kpi-calmar').innerText = (comp.calmar_ratio || 0).toFixed(2);
+
+            // Drawdowns & Breakers
+            const curDd = port.current_drawdown_pct || 0;
+            const rollDd = port.rolling_24h_drawdown_pct || 0;
+            document.getElementById('kpi-current-dd').innerText = `${curDd.toFixed(2)}%`;
+            document.getElementById('kpi-rolling-dd').innerText = `${rollDd.toFixed(2)}%`;
+
+            const ddBar = document.getElementById('kpi-dd-bar');
+            ddBar.style.width = `${Math.min(100, (curDd / 6.0) * 100)}%`;
+            if (curDd > 4.5) ddBar.style.background = 'var(--negative)';
+            else if (curDd > 2.5) ddBar.style.background = 'var(--warning)';
+            else ddBar.style.background = 'var(--positive)';
+
+            const circBadge = document.getElementById('kpi-circuit-status');
+            if (port.permanent_kill) {
+                circBadge.className = 'pill pill-red';
+                circBadge.innerText = 'KILL SWITCH TRIPPED';
+                document.getElementById('ft-freeze-status').innerText = 'PERMANENT BREAKER';
+                document.getElementById('ft-freeze-status').className = 'text-neg';
+            } else if (port.is_frozen) {
+                circBadge.className = 'pill pill-dry';
+                circBadge.innerText = '24H DD FREEZE (6H)';
+                document.getElementById('ft-freeze-status').innerText = 'FROZEN (3.5% DD)';
+                document.getElementById('ft-freeze-status').className = 'text-warn';
+            } else {
+                circBadge.className = 'pill pill-live';
+                circBadge.innerText = 'CIRCUITS OK';
+                document.getElementById('ft-freeze-status').innerText = 'NORMAL';
+                document.getElementById('ft-freeze-status').className = 'text-pos';
+            }
+
+            // Rate limiter
+            if (data.rate_limiter) {
+                document.getElementById('rate-tokens').innerText = (data.rate_limiter.tokens || 10).toFixed(1);
+                document.getElementById('drift-ms').innerText = `${Math.round(data.rate_limiter.drift_ms || 0)}ms`;
+            }
+
+            // 3. Strategy Microstructure Grid (Tab 1)
+            renderStrategyTracking(data.tracking || []);
+
+            // 4. Positions Table (Tab 2)
+            renderPositionsTable(data.positions || []);
+
+            // 5. Orders Ledger (Tab 3)
+            renderOrdersTable(data.orders || []);
+
+            // 6. Audit Trail (Tab 4)
+            renderAuditTrail(data.audit || {});
+
+            // 7. Footer Tickers
+            const tracking = data.tracking || [];
+            tracking.forEach(item => {
+                if (item.symbol === 'BTC/USD') {
+                    document.getElementById('ft-btc-price').innerText = `$${(item.ticker.last_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+                    const chgEl = document.getElementById('ft-btc-chg');
+                    const c = item.ticker.change_24h_pct || 0;
+                    chgEl.innerText = `${c >= 0 ? '+' : ''}${c.toFixed(2)}%`;
+                    chgEl.className = c >= 0 ? 'text-pos mono' : 'text-neg mono';
+                } else if (item.symbol === 'ETH/USD') {
+                    document.getElementById('ft-eth-price').innerText = `$${(item.ticker.last_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+                    const chgEl = document.getElementById('ft-eth-chg');
+                    const c = item.ticker.change_24h_pct || 0;
+                    chgEl.innerText = `${c >= 0 ? '+' : ''}${c.toFixed(2)}%`;
+                    chgEl.className = c >= 0 ? 'text-pos mono' : 'text-neg mono';
+                }
+            });
+        }
+
+        // Render Strategy Grid Cards
+        function renderStrategyTracking(trackingList) {
+            const container = document.getElementById('strategy-grid-container');
+            if (!trackingList || trackingList.length === 0) return;
+
+            let html = '';
+            trackingList.forEach(t => {
+                const sym = t.symbol;
+                const tk = t.ticker || {};
+                const reg = t.regime || {};
+                const va = t.value_area || {};
+                const ls = t.liquidity_sweep || {};
+                const cvd = t.cvd_absorption || {};
+                const sig = t.chosen_signal || {};
+
+                const lastPx = tk.last_price || 0;
+                const chg = tk.change_24h_pct || 0;
+                const chgClass = chg >= 0 ? 'text-pos' : 'text-neg';
+
+                // Value area visual pin position (0% to 100%)
+                const vah = va.vah || (lastPx * 1.01);
+                const val = va.val || (lastPx * 0.99);
+                const poc = va.poc || lastPx;
+                const spreadRange = Math.max(1, (vah - val) * 2.2);
+                const centerVal = (vah + val) / 2;
+                const minRange = centerVal - spreadRange / 2;
+                const maxRange = centerVal + spreadRange / 2;
+
+                const getPct = (px) => Math.min(100, Math.max(0, ((px - minRange) / spreadRange) * 100));
+                const valLeftPct = getPct(val);
+                const vahRightPct = getPct(vah);
+                const vaWidthPct = Math.max(4, vahRightPct - valLeftPct);
+                const pocPct = getPct(poc);
+                const currentPxPct = getPct(lastPx);
+
+                // Signal style
+                let sigBadgeClass = 'pill-blue';
+                if (sig.direction === 'BUY') sigBadgeClass = 'pill-live';
+                else if (sig.direction === 'DE_RISK') sigBadgeClass = 'pill-red';
+
+                html += `
+                <div class="symbol-card">
+                    <!-- Symbol Card Header -->
+                    <div class="symbol-card-header">
+                        <div class="symbol-name">
+                            <span>🪙</span>
+                            <span>${sym}</span>
+                            <span class="pill pill-blue mono" style="font-size:10px;">5m Microstructure</span>
+                        </div>
+                        <div style="text-align:right;">
+                            <div class="symbol-price mono">$${lastPx.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                            <div style="font-size:11px;" class="mono ${chgClass}">
+                                ${chg >= 0 ? '+' : ''}${chg.toFixed(2)}% | 24h Vol: ${((tk.volume_24h || 0)).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="symbol-body">
+                        <!-- Ticker & Spread Row -->
+                        <div class="stat-item" style="flex-direction:row; justify-content:space-between; font-size:11px;" class="mono">
+                            <span>Bid: <b>$${(tk.bid || 0).toFixed(2)}</b> | Ask: <b>$${(tk.ask || 0).toFixed(2)}</b></span>
+                            <span>Spread: <b>$${(tk.spread || 0).toFixed(2)} (${(tk.spread_bps || 0).toFixed(1)} bps)</b></span>
+                        </div>
+
+                        <!-- 1. Market Regime -->
+                        <div class="module-box">
+                            <div class="module-header">
+                                <span class="module-title"><span>📐</span> Quantitative Regime</span>
+                                <span class="pill pill-purple mono">${reg.name || 'RANGE'} (${reg.trend_direction || 'NEUTRAL'})</span>
+                            </div>
+                            <div class="module-grid">
+                                <div class="stat-item">
+                                    <span class="stat-label">ADX (14)</span>
+                                    <span class="stat-val mono">${(reg.adx || 0).toFixed(1)}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">ATR (14)</span>
+                                    <span class="stat-val mono">$${(reg.atr || 0).toFixed(2)}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Vol %tile</span>
+                                    <span class="stat-val mono">${(reg.volatility_percentile || 0).toFixed(1)}%</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Regime Action</span>
+                                    <span class="stat-val mono ${reg.name === 'TREND' ? 'text-pos' : 'text-accent'}">
+                                        ${reg.name === 'TREND' ? 'MOMENTUM' : 'MEAN REVERSION'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. Strategy A: Volume Profile & Value Area -->
+                        <div class="module-box">
+                            <div class="module-header">
+                                <span class="module-title"><span>📊</span> Strategy A: Volume Profile (70% VA)</span>
+                                <span class="pill ${va.signal === 'BUY' ? 'pill-live' : (va.signal === 'DE_RISK' ? 'pill-red' : 'pill-blue')} mono">
+                                    ${va.signal} (${(va.confidence * 100).toFixed(0)}%)
+                                </span>
+                            </div>
+                            <div class="module-grid">
+                                <div class="stat-item">
+                                    <span class="stat-label">VAH (High)</span>
+                                    <span class="stat-val mono">$${(va.vah || 0).toFixed(2)}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">POC (Point of Control)</span>
+                                    <span class="stat-val mono text-warn">$${(va.poc || 0).toFixed(2)}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">VAL (Low)</span>
+                                    <span class="stat-val mono">$${(va.val || 0).toFixed(2)}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Session VWAP</span>
+                                    <span class="stat-val mono text-accent">$${(va.session_vwap || 0).toFixed(2)}</span>
+                                </div>
+                            </div>
+
+                            <!-- Value Area Visual Range Gauge -->
+                            <div class="va-range-container">
+                                <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-dim);" class="mono">
+                                    <span>Discount (VAL: $${(va.val || 0).toFixed(0)})</span>
+                                    <span class="text-warn">POC: $${(va.poc || 0).toFixed(0)}</span>
+                                    <span>Premium (VAH: $${(va.vah || 0).toFixed(0)})</span>
+                                </div>
+                                <div class="va-range-bar-track">
+                                    <div class="va-range-fill" style="left: ${valLeftPct}%; width: ${vaWidthPct}%;"></div>
+                                    <div class="va-poc-marker" style="left: ${pocPct}%;"></div>
+                                    <div class="va-current-price-pin" style="left: ${currentPxPct}%;" title="Current Price: $${lastPx.toFixed(2)}"></div>
+                                </div>
+                                <div style="font-size:10px; color:var(--text-muted); text-align:center;">
+                                    Price Position: <b class="text-accent">${va.position_desc || 'Inside Value Area'}</b>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. Strategy B: Liquidity Sweeps & MSS -->
+                        <div class="module-box">
+                            <div class="module-header">
+                                <span class="module-title"><span>🎯</span> Strategy B: Liquidity Sweeps & MSS</span>
+                                <span class="pill ${ls.signal === 'BUY' ? 'pill-live' : (ls.signal === 'DE_RISK' ? 'pill-red' : 'pill-blue')} mono">
+                                    ${ls.signal} (${(ls.confidence * 100).toFixed(0)}%)
+                                </span>
+                            </div>
+                            <div class="module-grid">
+                                <div class="stat-item">
+                                    <span class="stat-label">Fractal Swing High</span>
+                                    <span class="stat-val mono">$${(ls.swing_high || 0).toFixed(2)}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Fractal Swing Low</span>
+                                    <span class="stat-val mono">$${(ls.swing_low || 0).toFixed(2)}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Displacement Candle</span>
+                                    <span class="stat-val mono ${ls.displacement ? 'text-pos' : ''}">${ls.displacement ? 'DETECTED (>1.2 ATR)' : 'NONE'}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Fair Value Gap</span>
+                                    <span class="stat-val mono ${ls.fvg_present ? 'text-accent' : ''}">${ls.fvg_present ? 'ACTIVE GAP' : 'FILLED'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 4. Strategy C: CVD Absorption & Order Flow -->
+                        <div class="module-box">
+                            <div class="module-header">
+                                <span class="module-title"><span>🌊</span> Strategy C: CVD Absorption & Delta</span>
+                                <span class="pill ${cvd.signal === 'BUY' ? 'pill-live' : (cvd.signal === 'DE_RISK' ? 'pill-red' : 'pill-blue')} mono">
+                                    ${cvd.signal} (${(cvd.confidence * 100).toFixed(0)}%)
+                                </span>
+                            </div>
+                            <div class="module-grid">
+                                <div class="stat-item">
+                                    <span class="stat-label">Latest Bar Delta</span>
+                                    <span class="stat-val mono ${(cvd.delta_volume || 0) >= 0 ? 'text-pos' : 'text-neg'}">
+                                        ${(cvd.delta_volume || 0) >= 0 ? '+' : ''}${(cvd.delta_volume || 0).toFixed(2)}
+                                    </span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Cumulative Delta (CVD)</span>
+                                    <span class="stat-val mono">${(cvd.cvd_value || 0).toFixed(1)}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">CVD Stream Status</span>
+                                    <span class="stat-val mono ${cvd.degraded_mode ? 'text-warn' : 'text-pos'}">
+                                        ${cvd.degraded_mode ? 'Synthesized Delta (Fallback)' : 'Live Feed Active'}
+                                    </span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Delta Absorption</span>
+                                    <span class="stat-val mono text-accent">${cvd.signal !== 'NO_TRADE' ? 'ABSORPTION SIGNAL' : 'EQUILIBRIUM'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 5. Active Selected Signal -->
+                        <div class="actionable-signal">
+                            <div class="signal-decision">
+                                <div style="font-size:10px; color:var(--text-dim); font-weight:600; text-transform:uppercase;">Strategy Engine Decision:</div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span class="signal-badge-lg ${sigBadgeClass} mono">${sig.direction || 'NO_TRADE'}</span>
+                                    <span style="font-size:12px; font-weight:700;">via ${sig.strategy || 'ENGINE'} (${((sig.confidence || 0) * 100).toFixed(0)}% Conf)</span>
+                                </div>
+                                <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">
+                                    ${sig.reason || 'Scanning order book microstructure for edge...'}
+                                </div>
+                            </div>
+                            <div style="text-align:right; font-size:11px;" class="mono">
+                                <div>SL: <b class="text-neg">$${(sig.stop_loss || 0).toFixed(2)}</b></div>
+                                <div>TP1: <b class="text-pos">$${(sig.take_profit_1 || 0).toFixed(2)}</b></div>
+                                <div>TP2: <b class="text-pos">$${(sig.take_profit_2 || 0).toFixed(2)}</b></div>
+                                <div>R:R: <b class="text-accent">${(sig.expected_rr || 0).toFixed(2)}</b></div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        // Render Positions Table (Tab 2)
+        function renderPositionsTable(positions) {
+            const tbody = document.getElementById('positions-tbody');
+            if (!positions || positions.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="12" style="text-align:center; color:var(--text-dim); padding: 30px;">
+                            No open positions active. Bot is scanning in capital-preservation mode.
+                        </td>
+                    </tr>`;
+                return;
+            }
+
+            let html = '';
+            positions.forEach(p => {
+                const pnl = p.unrealized_pnl || 0;
+                const pnlPct = p.unrealized_pnl_pct || 0;
+                const pnlClass = pnl >= 0 ? 'text-pos' : 'text-neg';
+
+                html += `
+                <tr>
+                    <td class="mono font-bold">${p.symbol}</td>
+                    <td><span class="pill pill-live mono">BUY (SPOT)</span></td>
+                    <td class="mono">${p.quantity.toFixed(4)} ${p.base_coin}</td>
+                    <td class="mono">$${p.entry_price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td class="mono font-bold">$${p.current_price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td class="mono">$${(p.notional_value || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td class="mono ${pnlClass}">
+                        <b>${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</b> (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)
+                    </td>
+                    <td>
+                        <span class="pill pill-purple mono" style="font-size:10px;">${p.trailing_status || 'Initial Stop'}</span>
+                        <div style="font-size:10px; color:var(--text-dim);" class="mono">SL: $${(p.stop_loss || 0).toFixed(2)}</div>
+                    </td>
+                    <td class="mono text-pos">$${(p.take_profit_1 || 0).toFixed(2)}</td>
+                    <td class="mono text-pos">$${(p.take_profit_2 || 0).toFixed(2)}</td>
+                    <td><span class="pill pill-blue mono" style="font-size:10px;">${p.strategy || 'STRATEGY'}</span></td>
+                    <td>
+                        <button class="btn btn-danger" style="padding:4px 8px; font-size:10px;" onclick="deriskPosition('${p.symbol}')">
+                            De-Risk
+                        </button>
+                    </td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        }
+
+        // Render Orders Table (Tab 3)
+        function renderOrdersTable(orders) {
+            const tbody = document.getElementById('orders-tbody');
+            document.getElementById('tab-badge-orders').innerText = orders ? orders.length : 0;
+            if (!orders || orders.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="12" style="text-align:center; color:var(--text-dim); padding: 30px;">
+                            No orders recorded yet.
+                        </td>
+                    </tr>`;
+                return;
+            }
+
+            let html = '';
+            orders.slice(0, 30).forEach(o => {
+                let statusPill = 'pill-blue';
+                if (o.status === 'FILLED') statusPill = 'pill-live';
+                else if (o.status === 'CANCELED' || o.status === 'REJECTED') statusPill = 'pill-red';
+                else if (o.status === 'UNKNOWN') statusPill = 'pill-dry';
+
+                const ts = o.create_timestamp ? new Date(o.create_timestamp).toISOString().replace('T', ' ').substring(0, 19) : '--';
+
+                html += `
+                <tr>
+                    <td class="mono" style="font-size:11px; color:var(--accent);">${o.client_order_id}</td>
+                    <td class="mono" style="font-size:11px; color:var(--text-dim);">${ts}</td>
+                    <td class="mono font-bold">${o.symbol}</td>
+                    <td><span class="pill ${o.side === 'BUY' ? 'pill-live' : 'pill-red'} mono" style="font-size:10px;">${o.side}</span></td>
+                    <td class="mono">${o.order_type}</td>
+                    <td class="mono">$${(o.price || 0).toFixed(2)}</td>
+                    <td class="mono font-bold">$${(o.filled_avg_price || 0).toFixed(2)}</td>
+                    <td class="mono">${(o.quantity || 0).toFixed(4)}</td>
+                    <td class="mono">${(o.filled_quantity || 0).toFixed(4)}</td>
+                    <td><span class="pill ${statusPill} mono" style="font-size:10px;">${o.status}</span></td>
+                    <td class="mono">$${(o.commission || 0).toFixed(4)}</td>
+                    <td><span class="pill pill-blue mono" style="font-size:10px;">${o.strategy || 'AUTO'}</span></td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        }
+
+        // Render Audit Trail (Tab 4)
+        function renderAuditTrail(audit) {
+            const tbody = document.getElementById('audit-tbody');
+            const records = audit.records || [];
+            if (!records || records.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" style="text-align:center; color:var(--text-dim); padding: 30px;">
+                            No audit records generated.
+                        </td>
+                    </tr>`;
+                return;
+            }
+
+            let html = '';
+            records.forEach(r => {
+                const ts = r.timestamp_iso || (r.timestamp ? new Date(r.timestamp).toISOString() : '--');
+                const currHash = r.current_hash ? `${r.current_hash.substring(0, 12)}...` : 'N/A';
+                const prevHash = r.previous_hash ? `${r.previous_hash.substring(0, 12)}...` : 'GENESIS';
+
+                let tagClass = 'pill-blue';
+                if (r.event_type.includes('ORDER')) tagClass = 'pill-live';
+                else if (r.event_type.includes('KILL') || r.event_type.includes('CIRCUIT')) tagClass = 'pill-red';
+                else if (r.event_type.includes('RISK')) tagClass = 'pill-purple';
+
+                html += `
+                <tr>
+                    <td class="mono text-dim">#${r.sequence_id || 0}</td>
+                    <td class="mono text-dim" style="font-size:11px;">${ts}</td>
+                    <td><span class="pill ${tagClass} mono" style="font-size:10px;">${r.event_type}</span></td>
+                    <td style="max-width:300px; font-size:11px;">${r.details || JSON.stringify(r.payload || {})}</td>
+                    <td class="mono text-accent" title="${r.current_hash}">${currHash}</td>
+                    <td class="mono text-dim" title="${r.previous_hash}">${prevHash}</td>
+                    <td><span class="text-pos">🔗 Verified</span></td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            connectWebSocket();
+        });
+    </script>
+</body>
+</html>

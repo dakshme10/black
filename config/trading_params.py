@@ -119,6 +119,15 @@ class AuditConfig:
 
 
 @dataclass
+class WebConfig:
+    enabled: bool = True
+    host: str = "0.0.0.0"
+    port: int = 8080
+    auth_token: str = ""
+    broadcast_interval_seconds: float = 1.0
+
+
+@dataclass
 class AppConfig:
     exchange: ExchangeConfig = field(default_factory=ExchangeConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
@@ -129,6 +138,7 @@ class AppConfig:
     regime: RegimeConfig = field(default_factory=RegimeConfig)
     strategies: StrategiesConfig = field(default_factory=StrategiesConfig)
     audit: AuditConfig = field(default_factory=AuditConfig)
+    web: WebConfig = field(default_factory=WebConfig)
 
     # Environment-based security flags
     api_key: str = ""
@@ -281,12 +291,31 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
             max_log_bytes=int(au.get("max_log_bytes", 104857600)),
         )
 
+    # Populate web dashboard
+    if "web" in raw_cfg:
+        wb = raw_cfg["web"]
+        app_cfg.web = WebConfig(
+            enabled=bool(wb.get("enabled", True)),
+            host=str(wb.get("host", "0.0.0.0")),
+            port=int(wb.get("port", 8080)),
+            auth_token=str(wb.get("auth_token", "")),
+            broadcast_interval_seconds=float(wb.get("broadcast_interval_seconds", 1.0)),
+        )
+
     # Environment variables override credentials and execution safety
     app_cfg.api_key = os.getenv("ROOSTOO_API_KEY", "")
     app_cfg.secret_key = os.getenv("ROOSTOO_SECRET_KEY", "")
     base_url_env = os.getenv("ROOSTOO_BASE_URL")
     if base_url_env:
         app_cfg.exchange.base_url = base_url_env
+
+    # Web Dashboard env overrides
+    dash_port = os.getenv("ROOSTOO_DASHBOARD_PORT")
+    if dash_port and dash_port.isdigit():
+        app_cfg.web.port = int(dash_port)
+    dash_token = os.getenv("ROOSTOO_DASHBOARD_TOKEN")
+    if dash_token:
+        app_cfg.web.auth_token = dash_token
 
     # Safety flags
     dry_run_env = os.getenv("DRY_RUN", "true").lower()

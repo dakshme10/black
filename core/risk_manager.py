@@ -62,6 +62,11 @@ class RiskManager:
         self.permanent_kill_switch: bool = False
         self.freeze_until_timestamp: float = 0.0
 
+    @property
+    def is_frozen(self) -> bool:
+        return time.time() < self.freeze_until_timestamp
+
+
     def check_circuit_breakers(self) -> Tuple[bool, str]:
         """
         Evaluate portfolio drawdown thresholds.

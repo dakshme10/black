@@ -102,6 +102,12 @@ class RoostooClient:
         # Sync server time at startup if credentials or network allowed
         self._sync_server_time()
 
+    @property
+    def time_drift_ms(self) -> float:
+        """Offset between exchange server clock and local system clock in milliseconds."""
+        return float(self._server_time_offset_ms)
+
+
     def _sync_server_time(self) -> None:
         """Synchronize local timestamp with Roostoo server time to prevent clock skew rejection."""
         try:
