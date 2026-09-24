@@ -62,6 +62,11 @@ class TickerSnapshot:
         mid = (self.min_ask + self.max_bid) / 2.0 if (self.min_ask + self.max_bid) > 0 else self.last_price
         return (self.spread / mid) if mid > 0 else 0.0
 
+    @property
+    def spread_bps(self) -> float:
+        return self.spread_pct * 10000.0
+
+
 
 class MarketDataManager:
     """
