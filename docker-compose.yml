@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  roostoo-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: roostoo-quant-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "python", "main.py", "--status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    stop_grace_period: 15s

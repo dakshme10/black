@@ -1,0 +1,64 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables and secrets - NEVER COMMIT CREDENTIALS
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing and coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Local database and run logs (audit logs can be archived separately)
+data/*.db
+data/*.sqlite
+data/*.json
+data/*.tmp
+logs/*.log
+logs/*.jsonl
+!logs/audit_logger.py
+
+# Docker local volumes
+docker_volumes/

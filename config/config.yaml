@@ -1,0 +1,82 @@
+# ==============================================================================
+# ROOSTOO AUTONOMOUS QUANT TRADING BOT - PRODUCTION CONFIGURATION
+# ==============================================================================
+
+exchange:
+  name: "roostoo_mock"
+  base_url: "https://mock-api.roostoo.com"
+  requests_per_second: 5.0
+  burst_capacity: 10
+  timeout_seconds: 5.0
+  max_retries: 4
+  retry_base_delay: 0.5
+  retry_max_delay: 8.0
+
+portfolio:
+  initial_capital: 100000.0
+  min_cash_reserve_pct: 0.05       # 5% cash reserve constraint
+  max_gross_exposure_pct: 1.00     # 100% maximum gross exposure (no leverage)
+  max_risk_per_trade_pct: 0.01     # 1.0% maximum risk per trade
+  max_open_positions: 2            # Maximum simultaneous active positions
+  max_position_notional_pct: 0.50  # No single position exceeds 50% equity
+
+risk_controls:
+  rolling_24h_drawdown_limit: 0.035  # 3.5% rolling 24h drawdown circuit breaker
+  freeze_duration_hours: 6.0         # 6 hours cooling freeze on 3.5% drawdown
+  max_drawdown_limit: 0.06           # 6.0% maximum peak-to-trough circuit breaker
+  enforce_circuit_breakers: true
+
+fees:
+  maker_fee_pct: 0.0005   # 0.05% Limit/Maker
+  taker_fee_pct: 0.0010   # 0.10% Market/Taker
+  slippage_pct: 0.0002    # 0.02% estimated execution slippage
+
+trailing_stop:
+  breakeven_trigger_r: 1.0     # Move to breakeven after +1.0R
+  trail_activation_r: 2.0      # Activate trailing stop after +2.0R
+  atr_multiplier: 1.5          # ATR distance for dynamic trailing
+  atr_period: 14
+
+market_data:
+  pairs:
+    - "BTC/USD"
+    - "ETH/USD"
+  poll_interval_seconds: 5.0
+  stale_data_threshold_seconds: 30.0
+  primary_timeframe: "5m"
+  context_timeframe: "15m"
+
+regime_detection:
+  lookback_periods: 50
+  adx_trend_threshold: 25.0
+  atr_period: 14
+  volatility_high_percentile: 80.0
+  volatility_low_percentile: 20.0
+
+strategies:
+  value_area:
+    enabled: true
+    volume_profile_fraction: 0.70  # 70% volume for Value Area
+    lookback_candles: 72           # 6 hours of 5m bars
+    min_risk_reward: 1.5
+    tp1_allocation_pct: 0.50
+    tp2_allocation_pct: 0.50
+
+  liquidity_sweep:
+    enabled: true
+    swing_lookback: 20
+    displacement_factor: 1.2       # Body size > 1.2 * ATR
+    min_risk_reward: 2.0
+    tp1_r_multiple: 2.0
+
+  cvd_absorption:
+    enabled: true
+    delta_period: 14
+    divergence_window: 5
+    require_vwap_reclaim: true
+
+audit:
+  enable_hash_chain: true
+  audit_file: "logs/audit_trail.jsonl"
+  api_log_file: "logs/api_requests.jsonl"
+  max_log_bytes: 104857600  # 100 MB
