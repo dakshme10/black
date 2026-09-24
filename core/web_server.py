@@ -422,6 +422,14 @@ class WebServer:
         except Exception:
             pass
 
+        # 9. Recent Market Ticks
+        recent_ticks = []
+        try:
+            if hasattr(self.bot, "market_data") and hasattr(self.bot.market_data, "recent_ticks"):
+                recent_ticks = self.bot.market_data.recent_ticks
+        except Exception:
+            pass
+
         return {
             "server_time": server_time_str,
             "status": {
@@ -468,6 +476,7 @@ class WebServer:
             },
             "positions": active_positions_list,
             "tracking": tracking_data,
+            "ticks": recent_ticks,
             "orders": orders_list,
             "audit": {
                 "verified": audit_valid,

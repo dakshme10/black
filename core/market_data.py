@@ -7,6 +7,8 @@ and CVD/OI feature availability tracking without data fabrication.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections import deque
+from datetime import datetime, timezone
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -86,6 +88,7 @@ class MarketDataManager:
 
         self._lock = threading.Lock()
         self._latest_tickers: Dict[str, TickerSnapshot] = {}
+        self._recent_ticks: deque = deque(maxlen=100)
         self._last_poll_time: float = 0.0
 
         # Raw candle buffers by pair and timeframe: {pair: {"1m": [...], "5m": [...], "15m": [...]}}
@@ -119,6 +122,12 @@ class MarketDataManager:
         """Thread-safe snapshot of latest tickers by pair."""
         with self._lock:
             return dict(self._latest_tickers)
+
+    @property
+    def recent_ticks(self) -> List[Dict[str, Any]]:
+        """Thread-safe snapshot of recent market ticks."""
+        with self._lock:
+            return list(self._recent_ticks)
 
     def is_stale(self, pair: str) -> bool:
         """
@@ -160,6 +169,21 @@ class MarketDataManager:
                     )
                     self._latest_tickers[p] = snap
                     updated[p] = snap
+
+                    # Append to recent ticks tape
+                    dt_str = datetime.fromtimestamp(snap.local_time, timezone.utc).strftime("%H:%M:%S")
+                    self._recent_ticks.append({
+                        "timestamp": dt_str,
+                        "timestamp_ms": int(snap.local_time * 1000),
+                        "symbol": p,
+                        "last_price": snap.last_price,
+                        "max_bid": snap.max_bid,
+                        "min_ask": snap.min_ask,
+                        "spread": snap.spread,
+                        "spread_bps": snap.spread_bps,
+                        "volume": snap.coin_volume_24h,
+                        "change_24h": snap.change_24h * 100.0,
+                    })
 
                     # Ingest price tick into candle timeframes
                     self._ingest_tick(p, snap.last_price, snap.coin_volume_24h, server_time)

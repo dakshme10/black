@@ -551,6 +551,46 @@
         .text-warn { color: var(--warning); }
         .text-accent { color: var(--accent); }
 
+        /* Real-Time Flash Animations */
+        @keyframes flashGreen {
+            0% { background-color: rgba(16, 185, 129, 0.45); color: #fff; text-shadow: 0 0 10px #10b981; }
+            100% { background-color: transparent; }
+        }
+        @keyframes flashRed {
+            0% { background-color: rgba(244, 63, 94, 0.45); color: #fff; text-shadow: 0 0 10px #f43f5e; }
+            100% { background-color: transparent; }
+        }
+        @keyframes flashPulse {
+            0% { box-shadow: 0 0 14px rgba(56, 189, 248, 0.8); border-color: var(--accent); }
+            100% { box-shadow: none; }
+        }
+        @keyframes rowPulse {
+            0% { background-color: rgba(56, 189, 248, 0.2); }
+            100% { background-color: transparent; }
+        }
+        .flash-up {
+            animation: flashGreen 0.8s ease-out;
+            border-radius: 4px;
+            padding: 1px 4px;
+        }
+        .flash-down {
+            animation: flashRed 0.8s ease-out;
+            border-radius: 4px;
+            padding: 1px 4px;
+        }
+        .flash-tick {
+            animation: flashPulse 0.6s ease-out;
+        }
+        .tick-row-new {
+            animation: rowPulse 1.2s ease-out;
+        }
+        .tick-row-up {
+            animation: flashGreen 1.2s ease-out;
+        }
+        .tick-row-down {
+            animation: flashRed 1.2s ease-out;
+        }
+
         /* Audit Chain Verification Banner */
         .audit-banner {
             background: rgba(16, 185, 129, 0.08);
@@ -714,6 +754,10 @@
                     <span id="ws-pulse" class="dot-pulse"></span>
                     <span id="ws-status">WS: CONNECTING</span>
                 </span>
+                <span class="pill pill-live mono" id="pill-stream-heartbeat" title="Live Streaming Telemetry Heartbeat">
+                    <span class="dot-pulse" style="background:#38bdf8; box-shadow:0 0 8px #38bdf8;"></span>
+                    <span id="stream-ticks-counter">TICKS: 0</span> • <span id="stream-elapsed">0.0s ago</span>
+                </span>
                 <span id="badge-audit" class="pill pill-live">
                     <span>🛡️</span>
                     <span id="audit-text">SHA-256 CHAIN: VERIFIED</span>
@@ -856,6 +900,49 @@
                 <!-- Dynamically populated per trading symbol (BTC/USD, ETH/USD) -->
                 <div style="grid-column: span 2; padding: 40px; text-align: center; color: var(--text-dim);">
                     Awaiting live quantitative strategy telemetry...
+                </div>
+            </div>
+
+            <!-- Real-Time Market Ticks & Micro-Quotes Tape -->
+            <div class="table-container" style="margin-top: 14px;">
+                <div class="table-header-bar">
+                    <div class="table-title">
+                        <span>⚡</span> Live Market Ticks & Order Flow Tape
+                        <span class="pill pill-live mono" id="tape-status-pill">STREAMING (2s ROOSTOO POLL)</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <span class="mono" style="font-size:11px; color:var(--text-dim);">
+                            Ticks Streamed: <b id="tape-tick-count" class="text-accent">0</b>
+                        </span>
+                        <button class="btn btn-accent" style="padding:4px 10px; font-size:11px;" onclick="openManualTradeModal()">
+                            ⚡ Place Test Order
+                        </button>
+                    </div>
+                </div>
+                <div style="max-height: 250px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time (UTC)</th>
+                                <th>Symbol</th>
+                                <th>Last Price</th>
+                                <th>Tick Shift</th>
+                                <th>Max Bid</th>
+                                <th>Min Ask</th>
+                                <th>Spread</th>
+                                <th>Spread (bps)</th>
+                                <th>24h Volume</th>
+                                <th>Exchange Feed</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tick-tape-tbody">
+                            <tr>
+                                <td colspan="10" style="text-align:center; color:var(--text-dim); padding: 25px;">
+                                    Streaming live market ticks from Roostoo mock exchange...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -1124,6 +1211,14 @@
                 <div style="font-size:11px; color:var(--text-dim);">
                     * Order will be verified against the 1.0% trade risk, 100% gross exposure ceiling, and 5% cash reserve before transmission.
                 </div>
+                <div style="display:flex; gap:8px; margin-top:4px;">
+                    <button type="button" class="btn" style="flex:1; border-color:var(--accent); font-size:11px;" onclick="fillAndSubmitTestTrade('BTC/USD', 'BUY', 500)">
+                        ⚡ Test Buy $500 BTC
+                    </button>
+                    <button type="button" class="btn" style="flex:1; border-color:var(--accent); font-size:11px;" onclick="fillAndSubmitTestTrade('ETH/USD', 'BUY', 500)">
+                        ⚡ Test Buy $500 ETH
+                    </button>
+                </div>
             </div>
             <div class="modal-actions">
                 <button class="btn" onclick="closeModal('modal-trade')">Cancel</button>
@@ -1259,8 +1354,27 @@
         }
 
         // =========================================================================
-        // WEBSOCKET TELEMETRY RECEIVER                                              //
+        // STREAM HEARTBEAT & WEBSOCKET RECEIVER                                    //
         // =========================================================================
+        let totalTicksReceived = 0;
+        let lastFrameTime = Date.now();
+        let lastKnownPrices = {};
+        let tickTapeBuffer = [];
+        const maxTapeRows = 40;
+
+        // Heartbeat millisecond counter updating every 100ms
+        setInterval(() => {
+            const elapsed = ((Date.now() - lastFrameTime) / 1000).toFixed(1);
+            const el = document.getElementById('stream-elapsed');
+            if (el) el.innerText = `${elapsed}s ago`;
+        }, 100);
+
+        async function fillAndSubmitTestTrade(sym, side, notional) {
+            closeModal('modal-trade');
+            showToast(`Submitting test ${side} order for ${sym} ($${notional})...`);
+            await sendCommand('manual_trade', { symbol: sym, side: side, notional_usd: notional });
+        }
+
         function connectWebSocket() {
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${location.host}/ws`;
@@ -1268,7 +1382,7 @@
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                document.getElementById('ws-status').innerText = 'WS: CONNECTED (1s)';
+                document.getElementById('ws-status').innerText = 'WS: CONNECTED';
                 document.getElementById('ws-pulse').style.background = '#10b981';
                 console.log('Telemetry WebSocket connected.');
             };
@@ -1276,6 +1390,20 @@
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
+                    totalTicksReceived++;
+                    lastFrameTime = Date.now();
+                    const countEl = document.getElementById('stream-ticks-counter');
+                    if (countEl) countEl.innerText = `TICKS: ${totalTicksReceived.toLocaleString()}`;
+                    const el = document.getElementById('stream-elapsed');
+                    if (el) el.innerText = '0.0s ago';
+
+                    const hb = document.getElementById('pill-stream-heartbeat');
+                    if (hb) {
+                        hb.classList.remove('flash-tick');
+                        void hb.offsetWidth;
+                        hb.classList.add('flash-tick');
+                    }
+
                     currentPayload = data;
                     renderTelemetry(data);
                 } catch (e) {
@@ -1303,12 +1431,14 @@
                     const res = await fetch('/api/status');
                     if (res.ok) {
                         const data = await res.json();
+                        totalTicksReceived++;
+                        lastFrameTime = Date.now();
                         currentPayload = data;
                         renderTelemetry(data);
                     }
                 } catch (e) {}
             }
-        }, 3000);
+        }, 2000);
 
         // =========================================================================
         // TELEMETRY RENDER PIPELINE                                                //
@@ -1416,6 +1546,9 @@
             // 3. Strategy Microstructure Grid (Tab 1)
             renderStrategyTracking(data.tracking || []);
 
+            // 3b. Real-Time Market Ticks Tape (Tab 1)
+            updateTickTape(data.ticks || [], data.tracking || []);
+
             // 4. Positions Table (Tab 2)
             renderPositionsTable(data.positions || []);
 
@@ -1444,14 +1577,15 @@
             });
         }
 
-        // Render Strategy Grid Cards
+        // Render Strategy Grid Cards with in-place DOM updates & price flashing
         function renderStrategyTracking(trackingList) {
             const container = document.getElementById('strategy-grid-container');
-            if (!trackingList || trackingList.length === 0) return;
+            if (!container || !trackingList || trackingList.length === 0) return;
 
-            let html = '';
             trackingList.forEach(t => {
                 const sym = t.symbol;
+                const cleanSym = sym.replace(/[^a-zA-Z0-9]/g, '_');
+                const cardId = `card-sym-${cleanSym}`;
                 const tk = t.ticker || {};
                 const reg = t.regime || {};
                 const va = t.value_area || {};
@@ -1479,194 +1613,387 @@
                 const pocPct = getPct(poc);
                 const currentPxPct = getPct(lastPx);
 
-                // Signal style
                 let sigBadgeClass = 'pill-blue';
                 if (sig.direction === 'BUY') sigBadgeClass = 'pill-live';
                 else if (sig.direction === 'DE_RISK') sigBadgeClass = 'pill-red';
 
-                html += `
-                <div class="symbol-card">
-                    <!-- Symbol Card Header -->
-                    <div class="symbol-card-header">
-                        <div class="symbol-name">
-                            <span>🪙</span>
-                            <span>${sym}</span>
-                            <span class="pill pill-blue mono" style="font-size:10px;">5m Microstructure</span>
-                        </div>
-                        <div style="text-align:right;">
-                            <div class="symbol-price mono">$${lastPx.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-                            <div style="font-size:11px;" class="mono ${chgClass}">
-                                ${chg >= 0 ? '+' : ''}${chg.toFixed(2)}% | 24h Vol: ${((tk.volume_24h || 0)).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                let card = document.getElementById(cardId);
+                if (!card) {
+                    // Initial render of this symbol card
+                    const initialHtml = `
+                    <div class="symbol-card" id="${cardId}" data-last-price="${lastPx}">
+                        <div class="symbol-card-header">
+                            <div class="symbol-name">
+                                <span>🪙</span>
+                                <span>${sym}</span>
+                                <span class="pill pill-blue mono" id="pill-tick-${cleanSym}" style="font-size:10px;">5m Microstructure</span>
+                            </div>
+                            <div style="text-align:right;">
+                                <div class="symbol-price mono" id="px-${cleanSym}">$${lastPx.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                                <div style="font-size:11px;" class="mono ${chgClass}" id="chg-${cleanSym}">
+                                    ${chg >= 0 ? '+' : ''}${chg.toFixed(2)}% | 24h Vol: ${Math.round(tk.volume_24h || 0).toLocaleString()}
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="symbol-body">
-                        <!-- Ticker & Spread Row -->
-                        <div class="stat-item" style="flex-direction:row; justify-content:space-between; font-size:11px;" class="mono">
-                            <span>Bid: <b>$${(tk.bid || 0).toFixed(2)}</b> | Ask: <b>$${(tk.ask || 0).toFixed(2)}</b></span>
-                            <span>Spread: <b>$${(tk.spread || 0).toFixed(2)} (${(tk.spread_bps || 0).toFixed(1)} bps)</b></span>
-                        </div>
-
-                        <!-- 1. Market Regime -->
-                        <div class="module-box">
-                            <div class="module-header">
-                                <span class="module-title"><span>📐</span> Quantitative Regime</span>
-                                <span class="pill pill-purple mono">${reg.name || 'RANGE'} (${reg.trend_direction || 'NEUTRAL'})</span>
+                        <div class="symbol-body">
+                            <div class="stat-item" style="flex-direction:row; justify-content:space-between; font-size:11px;" class="mono">
+                                <span id="bidask-${cleanSym}">Bid: <b>$${(tk.bid || 0).toFixed(2)}</b> | Ask: <b>$${(tk.ask || 0).toFixed(2)}</b></span>
+                                <span id="spread-${cleanSym}">Spread: <b>$${(tk.spread || 0).toFixed(2)} (${(tk.spread_bps || 0).toFixed(1)} bps)</b></span>
                             </div>
-                            <div class="module-grid">
-                                <div class="stat-item">
-                                    <span class="stat-label">ADX (14)</span>
-                                    <span class="stat-val mono">${(reg.adx || 0).toFixed(1)}</span>
+
+                            <div class="module-box">
+                                <div class="module-header">
+                                    <span class="module-title"><span>📐</span> Quantitative Regime</span>
+                                    <span class="pill pill-purple mono" id="regime-pill-${cleanSym}">${reg.name || 'RANGE'} (${reg.trend_direction || 'NEUTRAL'})</span>
                                 </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">ATR (14)</span>
-                                    <span class="stat-val mono">$${(reg.atr || 0).toFixed(2)}</span>
+                                <div class="module-grid">
+                                    <div class="stat-item">
+                                        <span class="stat-label">ADX (14)</span>
+                                        <span class="stat-val mono" id="adx-${cleanSym}">${(reg.adx || 0).toFixed(1)}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">ATR (14)</span>
+                                        <span class="stat-val mono" id="atr-${cleanSym}">$${(reg.atr || 0).toFixed(2)}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Vol %tile</span>
+                                        <span class="stat-val mono" id="vol-${cleanSym}">${(reg.volatility_percentile || 0).toFixed(1)}%</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Regime Action</span>
+                                        <span class="stat-val mono ${reg.name === 'TREND' ? 'text-pos' : 'text-accent'}" id="regime-action-${cleanSym}">
+                                            ${reg.name === 'TREND' ? 'MOMENTUM' : 'MEAN REVERSION'}
+                                        </span>
+                                    </div>
                                 </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">Vol %tile</span>
-                                    <span class="stat-val mono">${(reg.volatility_percentile || 0).toFixed(1)}%</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">Regime Action</span>
-                                    <span class="stat-val mono ${reg.name === 'TREND' ? 'text-pos' : 'text-accent'}">
-                                        ${reg.name === 'TREND' ? 'MOMENTUM' : 'MEAN REVERSION'}
+                            </div>
+
+                            <div class="module-box">
+                                <div class="module-header">
+                                    <span class="module-title"><span>📊</span> Strategy A: Volume Profile (70% VA)</span>
+                                    <span class="pill ${va.signal === 'BUY' ? 'pill-live' : (va.signal === 'DE_RISK' ? 'pill-red' : 'pill-blue')} mono" id="va-sig-${cleanSym}">
+                                        ${va.signal} (${(va.confidence * 100).toFixed(0)}%)
                                     </span>
                                 </div>
+                                <div class="module-grid">
+                                    <div class="stat-item">
+                                        <span class="stat-label">VAH (High)</span>
+                                        <span class="stat-val mono" id="vah-${cleanSym}">$${(va.vah || 0).toFixed(2)}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">POC (Point of Control)</span>
+                                        <span class="stat-val mono text-warn" id="poc-${cleanSym}">$${(va.poc || 0).toFixed(2)}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">VAL (Low)</span>
+                                        <span class="stat-val mono" id="val-${cleanSym}">$${(va.val || 0).toFixed(2)}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Session VWAP</span>
+                                        <span class="stat-val mono text-accent" id="vwap-${cleanSym}">$${(va.session_vwap || 0).toFixed(2)}</span>
+                                    </div>
+                                </div>
+                                <div class="va-range-container">
+                                    <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-dim);" class="mono">
+                                        <span id="va-lbl-val-${cleanSym}">Discount (VAL: $${(va.val || 0).toFixed(0)})</span>
+                                        <span class="text-warn" id="va-lbl-poc-${cleanSym}">POC: $${(va.poc || 0).toFixed(0)}</span>
+                                        <span id="va-lbl-vah-${cleanSym}">Premium (VAH: $${(va.vah || 0).toFixed(0)})</span>
+                                    </div>
+                                    <div class="va-range-bar-track">
+                                        <div class="va-range-fill" id="va-fill-${cleanSym}" style="left: ${valLeftPct}%; width: ${vaWidthPct}%;"></div>
+                                        <div class="va-poc-marker" id="va-poc-${cleanSym}" style="left: ${pocPct}%;"></div>
+                                        <div class="va-current-price-pin" id="va-pin-${cleanSym}" style="left: ${currentPxPct}%;" title="Current Price: $${lastPx.toFixed(2)}"></div>
+                                    </div>
+                                    <div style="font-size:10px; color:var(--text-muted); text-align:center;">
+                                        Price Position: <b class="text-accent" id="va-pos-${cleanSym}">${va.position_desc || 'Inside Value Area'}</b>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
 
-                        <!-- 2. Strategy A: Volume Profile & Value Area -->
-                        <div class="module-box">
-                            <div class="module-header">
-                                <span class="module-title"><span>📊</span> Strategy A: Volume Profile (70% VA)</span>
-                                <span class="pill ${va.signal === 'BUY' ? 'pill-live' : (va.signal === 'DE_RISK' ? 'pill-red' : 'pill-blue')} mono">
-                                    ${va.signal} (${(va.confidence * 100).toFixed(0)}%)
-                                </span>
-                            </div>
-                            <div class="module-grid">
-                                <div class="stat-item">
-                                    <span class="stat-label">VAH (High)</span>
-                                    <span class="stat-val mono">$${(va.vah || 0).toFixed(2)}</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">POC (Point of Control)</span>
-                                    <span class="stat-val mono text-warn">$${(va.poc || 0).toFixed(2)}</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">VAL (Low)</span>
-                                    <span class="stat-val mono">$${(va.val || 0).toFixed(2)}</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">Session VWAP</span>
-                                    <span class="stat-val mono text-accent">$${(va.session_vwap || 0).toFixed(2)}</span>
-                                </div>
-                            </div>
-
-                            <!-- Value Area Visual Range Gauge -->
-                            <div class="va-range-container">
-                                <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-dim);" class="mono">
-                                    <span>Discount (VAL: $${(va.val || 0).toFixed(0)})</span>
-                                    <span class="text-warn">POC: $${(va.poc || 0).toFixed(0)}</span>
-                                    <span>Premium (VAH: $${(va.vah || 0).toFixed(0)})</span>
-                                </div>
-                                <div class="va-range-bar-track">
-                                    <div class="va-range-fill" style="left: ${valLeftPct}%; width: ${vaWidthPct}%;"></div>
-                                    <div class="va-poc-marker" style="left: ${pocPct}%;"></div>
-                                    <div class="va-current-price-pin" style="left: ${currentPxPct}%;" title="Current Price: $${lastPx.toFixed(2)}"></div>
-                                </div>
-                                <div style="font-size:10px; color:var(--text-muted); text-align:center;">
-                                    Price Position: <b class="text-accent">${va.position_desc || 'Inside Value Area'}</b>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 3. Strategy B: Liquidity Sweeps & MSS -->
-                        <div class="module-box">
-                            <div class="module-header">
-                                <span class="module-title"><span>🎯</span> Strategy B: Liquidity Sweeps & MSS</span>
-                                <span class="pill ${ls.signal === 'BUY' ? 'pill-live' : (ls.signal === 'DE_RISK' ? 'pill-red' : 'pill-blue')} mono">
-                                    ${ls.signal} (${(ls.confidence * 100).toFixed(0)}%)
-                                </span>
-                            </div>
-                            <div class="module-grid">
-                                <div class="stat-item">
-                                    <span class="stat-label">Fractal Swing High</span>
-                                    <span class="stat-val mono">$${(ls.swing_high || 0).toFixed(2)}</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">Fractal Swing Low</span>
-                                    <span class="stat-val mono">$${(ls.swing_low || 0).toFixed(2)}</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">Displacement Candle</span>
-                                    <span class="stat-val mono ${ls.displacement ? 'text-pos' : ''}">${ls.displacement ? 'DETECTED (>1.2 ATR)' : 'NONE'}</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">Fair Value Gap</span>
-                                    <span class="stat-val mono ${ls.fvg_present ? 'text-accent' : ''}">${ls.fvg_present ? 'ACTIVE GAP' : 'FILLED'}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 4. Strategy C: CVD Absorption & Order Flow -->
-                        <div class="module-box">
-                            <div class="module-header">
-                                <span class="module-title"><span>🌊</span> Strategy C: CVD Absorption & Delta</span>
-                                <span class="pill ${cvd.signal === 'BUY' ? 'pill-live' : (cvd.signal === 'DE_RISK' ? 'pill-red' : 'pill-blue')} mono">
-                                    ${cvd.signal} (${(cvd.confidence * 100).toFixed(0)}%)
-                                </span>
-                            </div>
-                            <div class="module-grid">
-                                <div class="stat-item">
-                                    <span class="stat-label">Latest Bar Delta</span>
-                                    <span class="stat-val mono ${(cvd.delta_volume || 0) >= 0 ? 'text-pos' : 'text-neg'}">
-                                        ${(cvd.delta_volume || 0) >= 0 ? '+' : ''}${(cvd.delta_volume || 0).toFixed(2)}
+                            <div class="module-box">
+                                <div class="module-header">
+                                    <span class="module-title"><span>🎯</span> Strategy B: Liquidity Sweeps & MSS</span>
+                                    <span class="pill ${ls.signal === 'BUY' ? 'pill-live' : (ls.signal === 'DE_RISK' ? 'pill-red' : 'pill-blue')} mono" id="ls-sig-${cleanSym}">
+                                        ${ls.signal} (${(ls.confidence * 100).toFixed(0)}%)
                                     </span>
                                 </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">Cumulative Delta (CVD)</span>
-                                    <span class="stat-val mono">${(cvd.cvd_value || 0).toFixed(1)}</span>
+                                <div class="module-grid">
+                                    <div class="stat-item">
+                                        <span class="stat-label">Fractal Swing High</span>
+                                        <span class="stat-val mono" id="swhigh-${cleanSym}">$${(ls.swing_high || 0).toFixed(2)}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Fractal Swing Low</span>
+                                        <span class="stat-val mono" id="swlow-${cleanSym}">$${(ls.swing_low || 0).toFixed(2)}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Displacement Candle</span>
+                                        <span class="stat-val mono ${ls.displacement ? 'text-pos' : ''}" id="disp-${cleanSym}">${ls.displacement ? 'DETECTED (>1.2 ATR)' : 'NONE'}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Fair Value Gap</span>
+                                        <span class="stat-val mono ${ls.fvg_present ? 'text-accent' : ''}" id="fvg-${cleanSym}">${ls.fvg_present ? 'ACTIVE GAP' : 'FILLED'}</span>
+                                    </div>
                                 </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">CVD Stream Status</span>
-                                    <span class="stat-val mono ${cvd.degraded_mode ? 'text-warn' : 'text-pos'}">
-                                        ${cvd.degraded_mode ? 'Synthesized Delta (Fallback)' : 'Live Feed Active'}
+                            </div>
+
+                            <div class="module-box">
+                                <div class="module-header">
+                                    <span class="module-title"><span>🌊</span> Strategy C: CVD Absorption & Delta</span>
+                                    <span class="pill ${cvd.signal === 'BUY' ? 'pill-live' : (cvd.signal === 'DE_RISK' ? 'pill-red' : 'pill-blue')} mono" id="cvd-sig-${cleanSym}">
+                                        ${cvd.signal} (${(cvd.confidence * 100).toFixed(0)}%)
                                     </span>
                                 </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">Delta Absorption</span>
-                                    <span class="stat-val mono text-accent">${cvd.signal !== 'NO_TRADE' ? 'ABSORPTION SIGNAL' : 'EQUILIBRIUM'}</span>
+                                <div class="module-grid">
+                                    <div class="stat-item">
+                                        <span class="stat-label">Latest Bar Delta</span>
+                                        <span class="stat-val mono ${(cvd.delta_volume || 0) >= 0 ? 'text-pos' : 'text-neg'}" id="delta-${cleanSym}">
+                                            ${(cvd.delta_volume || 0) >= 0 ? '+' : ''}${(cvd.delta_volume || 0).toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Cumulative Delta (CVD)</span>
+                                        <span class="stat-val mono" id="cvd-${cleanSym}">${(cvd.cvd_value || 0).toFixed(1)}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">CVD Stream Status</span>
+                                        <span class="stat-val mono ${cvd.degraded_mode ? 'text-warn' : 'text-pos'}" id="cvd-stat-${cleanSym}">
+                                            ${cvd.degraded_mode ? 'Synthesized Delta' : 'Live Feed'}
+                                        </span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Delta Absorption</span>
+                                        <span class="stat-val mono text-accent" id="absorb-${cleanSym}">${cvd.signal !== 'NO_TRADE' ? 'ABSORPTION SIGNAL' : 'EQUILIBRIUM'}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="actionable-signal">
+                                <div class="signal-decision">
+                                    <div style="font-size:10px; color:var(--text-dim); font-weight:600; text-transform:uppercase;">Strategy Engine Decision:</div>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <span class="signal-badge-lg ${sigBadgeClass} mono" id="sig-badge-${cleanSym}">${sig.direction || 'NO_TRADE'}</span>
+                                        <span style="font-size:12px; font-weight:700;" id="sig-engine-${cleanSym}">via ${sig.strategy || 'ENGINE'} (${((sig.confidence || 0) * 100).toFixed(0)}% Conf)</span>
+                                    </div>
+                                    <div style="font-size:11px; color:var(--text-muted); margin-top:2px;" id="sig-reason-${cleanSym}">
+                                        ${sig.reason || 'Scanning order book microstructure for edge...'}
+                                    </div>
+                                </div>
+                                <div style="text-align:right; font-size:11px;" class="mono">
+                                    <div>SL: <b class="text-neg" id="sig-sl-${cleanSym}">$${(sig.stop_loss || 0).toFixed(2)}</b></div>
+                                    <div>TP1: <b class="text-pos" id="sig-tp1-${cleanSym}">$${(sig.take_profit_1 || 0).toFixed(2)}</b></div>
+                                    <div>TP2: <b class="text-pos" id="sig-tp2-${cleanSym}">$${(sig.take_profit_2 || 0).toFixed(2)}</b></div>
+                                    <div>R:R: <b class="text-accent" id="sig-rr-${cleanSym}">${(sig.expected_rr || 0).toFixed(2)}</b></div>
                                 </div>
                             </div>
                         </div>
+                    </div>`;
 
-                        <!-- 5. Active Selected Signal -->
-                        <div class="actionable-signal">
-                            <div class="signal-decision">
-                                <div style="font-size:10px; color:var(--text-dim); font-weight:600; text-transform:uppercase;">Strategy Engine Decision:</div>
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <span class="signal-badge-lg ${sigBadgeClass} mono">${sig.direction || 'NO_TRADE'}</span>
-                                    <span style="font-size:12px; font-weight:700;">via ${sig.strategy || 'ENGINE'} (${((sig.confidence || 0) * 100).toFixed(0)}% Conf)</span>
-                                </div>
-                                <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">
-                                    ${sig.reason || 'Scanning order book microstructure for edge...'}
-                                </div>
-                            </div>
-                            <div style="text-align:right; font-size:11px;" class="mono">
-                                <div>SL: <b class="text-neg">$${(sig.stop_loss || 0).toFixed(2)}</b></div>
-                                <div>TP1: <b class="text-pos">$${(sig.take_profit_1 || 0).toFixed(2)}</b></div>
-                                <div>TP2: <b class="text-pos">$${(sig.take_profit_2 || 0).toFixed(2)}</b></div>
-                                <div>R:R: <b class="text-accent">${(sig.expected_rr || 0).toFixed(2)}</b></div>
-                            </div>
-                        </div>
+                    if (container.children.length === 1 && container.children[0].innerText.includes('Awaiting')) {
+                        container.innerHTML = '';
+                    }
+                    const temp = document.createElement('div');
+                    temp.innerHTML = initialHtml.trim();
+                    container.appendChild(temp.firstElementChild);
+                    card = document.getElementById(cardId);
+                } else {
+                    // Update in-place with price flash!
+                    const pxEl = document.getElementById(`px-${cleanSym}`);
+                    const prevPx = parseFloat(card.dataset.lastPrice || '0');
+                    if (prevPx > 0 && pxEl) {
+                        if (lastPx > prevPx) {
+                            pxEl.classList.remove('flash-up', 'flash-down');
+                            void pxEl.offsetWidth;
+                            pxEl.classList.add('flash-up');
+                        } else if (lastPx < prevPx) {
+                            pxEl.classList.remove('flash-up', 'flash-down');
+                            void pxEl.offsetWidth;
+                            pxEl.classList.add('flash-down');
+                        }
+                    }
+                    card.dataset.lastPrice = lastPx;
+                    if (pxEl) pxEl.innerText = `$${lastPx.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 
-                    </div>
-                </div>
-                `;
+                    // Micro-pulse indicator to show active evaluation
+                    const tickPill = document.getElementById(`pill-tick-${cleanSym}`);
+                    if (tickPill) {
+                        tickPill.classList.remove('flash-tick');
+                        void tickPill.offsetWidth;
+                        tickPill.classList.add('flash-tick');
+                    }
+
+                    const chgEl = document.getElementById(`chg-${cleanSym}`);
+                    if (chgEl) {
+                        chgEl.className = `mono ${chg >= 0 ? 'text-pos' : 'text-neg'}`;
+                        chgEl.innerText = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}% | 24h Vol: ${Math.round(tk.volume_24h || 0).toLocaleString()}`;
+                    }
+
+                    const bidaskEl = document.getElementById(`bidask-${cleanSym}`);
+                    if (bidaskEl) bidaskEl.innerHTML = `Bid: <b>$${(tk.bid || 0).toFixed(2)}</b> | Ask: <b>$${(tk.ask || 0).toFixed(2)}</b>`;
+
+                    const spreadEl = document.getElementById(`spread-${cleanSym}`);
+                    if (spreadEl) spreadEl.innerHTML = `Spread: <b>$${(tk.spread || 0).toFixed(2)} (${(tk.spread_bps || 0).toFixed(1)} bps)</b>`;
+
+                    const regPill = document.getElementById(`regime-pill-${cleanSym}`);
+                    if (regPill) regPill.innerText = `${reg.name || 'RANGE'} (${reg.trend_direction || 'NEUTRAL'})`;
+
+                    const adxEl = document.getElementById(`adx-${cleanSym}`);
+                    if (adxEl) adxEl.innerText = (reg.adx || 0).toFixed(1);
+                    const atrEl = document.getElementById(`atr-${cleanSym}`);
+                    if (atrEl) atrEl.innerText = `$${(reg.atr || 0).toFixed(2)}`;
+                    const volEl = document.getElementById(`vol-${cleanSym}`);
+                    if (volEl) volEl.innerText = `${(reg.volatility_percentile || 0).toFixed(1)}%`;
+
+                    const vahEl = document.getElementById(`vah-${cleanSym}`);
+                    if (vahEl) vahEl.innerText = `$${(va.vah || 0).toFixed(2)}`;
+                    const pocEl = document.getElementById(`poc-${cleanSym}`);
+                    if (pocEl) pocEl.innerText = `$${(va.poc || 0).toFixed(2)}`;
+                    const valEl = document.getElementById(`val-${cleanSym}`);
+                    if (valEl) valEl.innerText = `$${(va.val || 0).toFixed(2)}`;
+                    const vwapEl = document.getElementById(`vwap-${cleanSym}`);
+                    if (vwapEl) vwapEl.innerText = `$${(va.session_vwap || 0).toFixed(2)}`;
+
+                    const vaFill = document.getElementById(`va-fill-${cleanSym}`);
+                    if (vaFill) { vaFill.style.left = `${valLeftPct}%`; vaFill.style.width = `${vaWidthPct}%`; }
+                    const vaPoc = document.getElementById(`va-poc-${cleanSym}`);
+                    if (vaPoc) vaPoc.style.left = `${pocPct}%`;
+                    const vaPin = document.getElementById(`va-pin-${cleanSym}`);
+                    if (vaPin) { vaPin.style.left = `${currentPxPct}%`; vaPin.title = `Current Price: $${lastPx.toFixed(2)}`; }
+                    const vaPos = document.getElementById(`va-pos-${cleanSym}`);
+                    if (vaPos) vaPos.innerText = va.position_desc || 'Inside Value Area';
+
+                    const swhighEl = document.getElementById(`swhigh-${cleanSym}`);
+                    if (swhighEl) swhighEl.innerText = `$${(ls.swing_high || 0).toFixed(2)}`;
+                    const swlowEl = document.getElementById(`swlow-${cleanSym}`);
+                    if (swlowEl) swlowEl.innerText = `$${(ls.swing_low || 0).toFixed(2)}`;
+
+                    const deltaEl = document.getElementById(`delta-${cleanSym}`);
+                    if (deltaEl) {
+                        const d = cvd.delta_volume || 0;
+                        deltaEl.innerText = `${d >= 0 ? '+' : ''}${d.toFixed(2)}`;
+                        deltaEl.className = `stat-val mono ${d >= 0 ? 'text-pos' : 'text-neg'}`;
+                    }
+                    const cvdEl = document.getElementById(`cvd-${cleanSym}`);
+                    if (cvdEl) cvdEl.innerText = (cvd.cvd_value || 0).toFixed(1);
+
+                    const sigBadge = document.getElementById(`sig-badge-${cleanSym}`);
+                    if (sigBadge) {
+                        sigBadge.className = `signal-badge-lg ${sigBadgeClass} mono`;
+                        sigBadge.innerText = sig.direction || 'NO_TRADE';
+                    }
+                    const sigEng = document.getElementById(`sig-engine-${cleanSym}`);
+                    if (sigEng) sigEng.innerText = `via ${sig.strategy || 'ENGINE'} (${((sig.confidence || 0) * 100).toFixed(0)}% Conf)`;
+                    const sigReas = document.getElementById(`sig-reason-${cleanSym}`);
+                    if (sigReas) sigReas.innerText = sig.reason || 'Scanning order book microstructure...';
+
+                    const slEl = document.getElementById(`sig-sl-${cleanSym}`);
+                    if (slEl) slEl.innerText = `$${(sig.stop_loss || 0).toFixed(2)}`;
+                    const tp1El = document.getElementById(`sig-tp1-${cleanSym}`);
+                    if (tp1El) tp1El.innerText = `$${(sig.take_profit_1 || 0).toFixed(2)}`;
+                    const tp2El = document.getElementById(`sig-tp2-${cleanSym}`);
+                    if (tp2El) tp2El.innerText = `$${(sig.take_profit_2 || 0).toFixed(2)}`;
+                    const rrEl = document.getElementById(`sig-rr-${cleanSym}`);
+                    if (rrEl) rrEl.innerText = (sig.expected_rr || 0).toFixed(2);
+                }
             });
+        }
 
-            container.innerHTML = html;
+        // Real-Time Ticks Tape & Execution Flow Stream
+        function updateTickTape(ticks, trackingList) {
+            const tbody = document.getElementById('tick-tape-tbody');
+            if (!tbody) return;
+
+            let incoming = [];
+            if (ticks && ticks.length > 0) {
+                ticks.forEach(t => {
+                    const id = `${t.symbol}_${t.timestamp}_${t.last_price}`;
+                    if (!tickTapeBuffer.some(item => item._id === id)) {
+                        t._id = id;
+                        const prev = lastKnownPrices[t.symbol] !== undefined ? lastKnownPrices[t.symbol] : t.last_price;
+                        t.shift = t.last_price - prev;
+                        lastKnownPrices[t.symbol] = t.last_price;
+                        incoming.push(t);
+                    }
+                });
+            }
+
+            // Fallback / heartbeat generation if ticks buffer is empty
+            if (incoming.length === 0 && trackingList && trackingList.length > 0) {
+                trackingList.forEach(item => {
+                    const sym = item.symbol;
+                    const tk = item.ticker || {};
+                    const curPx = tk.last_price || 0;
+                    if (curPx > 0) {
+                        const prevPx = lastKnownPrices[sym] !== undefined ? lastKnownPrices[sym] : curPx;
+                        const shift = curPx - prevPx;
+                        lastKnownPrices[sym] = curPx;
+
+                        const now = new Date();
+                        const ts = now.toISOString().substring(11, 19);
+                        const id = `${sym}_${ts}_${curPx}`;
+                        if (!tickTapeBuffer.some(e => e._id === id)) {
+                            incoming.push({
+                                _id: id,
+                                timestamp: ts,
+                                symbol: sym,
+                                last_price: curPx,
+                                shift: shift,
+                                max_bid: tk.bid || curPx,
+                                min_ask: tk.ask || curPx,
+                                spread: tk.spread || 0.01,
+                                spread_bps: tk.spread_bps || 0.0,
+                                volume: tk.volume_24h || 0,
+                                source: 'ROOSTOO_POLL'
+                            });
+                        }
+                    }
+                });
+            }
+
+            if (incoming.length === 0) return;
+
+            // Prepend new ticks
+            incoming.forEach(t => {
+                tickTapeBuffer.unshift(t);
+            });
+            if (tickTapeBuffer.length > maxTapeRows) {
+                tickTapeBuffer = tickTapeBuffer.slice(0, maxTapeRows);
+            }
+
+            const tapeCountEl = document.getElementById('tape-tick-count');
+            if (tapeCountEl) tapeCountEl.innerText = totalTicksReceived.toLocaleString();
+
+            let html = '';
+            tickTapeBuffer.forEach((t, idx) => {
+                const shiftVal = t.shift || 0;
+                let shiftHtml = '<span style="color:var(--text-dim);">0.00</span>';
+                let rowClass = '';
+                if (shiftVal > 0) {
+                    shiftHtml = `<span class="text-pos font-bold">▲ +$${shiftVal.toFixed(2)}</span>`;
+                    if (idx < incoming.length) rowClass = 'tick-row-up';
+                } else if (shiftVal < 0) {
+                    shiftHtml = `<span class="text-neg font-bold">▼ -$${Math.abs(shiftVal).toFixed(2)}</span>`;
+                    if (idx < incoming.length) rowClass = 'tick-row-down';
+                } else {
+                    if (idx < incoming.length) rowClass = 'tick-row-new';
+                }
+
+                html += `
+                <tr class="${rowClass}">
+                    <td class="mono text-dim" style="font-size:11px;">${t.timestamp}</td>
+                    <td class="mono font-bold">${t.symbol}</td>
+                    <td class="mono font-bold">$${(t.last_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td class="mono">${shiftHtml}</td>
+                    <td class="mono">$${(t.max_bid || 0).toFixed(2)}</td>
+                    <td class="mono">$${(t.min_ask || 0).toFixed(2)}</td>
+                    <td class="mono">$${(t.spread || 0).toFixed(2)}</td>
+                    <td class="mono">${(t.spread_bps || 0).toFixed(1)} bps</td>
+                    <td class="mono">${Math.round(t.volume || 0).toLocaleString()}</td>
+                    <td><span class="pill pill-blue mono" style="font-size:9px;">${t.source || 'ROOSTOO'}</span></td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
         }
 
         // Render Positions Table (Tab 2)
