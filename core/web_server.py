@@ -262,6 +262,14 @@ class WebServer:
                     )
                     return {"status": "success", "message": "Manual trade evaluated & executed", "details": result}
 
+                elif cmd == "shutdown":
+                    logger.info("Graceful shutdown command received from web endpoint.")
+                    def _do_shutdown():
+                        time.sleep(0.3)
+                        self.bot.shutdown()
+                    Thread(target=_do_shutdown, daemon=True, name="shutdown_worker").start()
+                    return {"status": "success", "message": "Graceful shutdown initiated"}
+
                 return {"status": "failed", "message": f"Unknown command: {cmd}"}
 
             except Exception as e:

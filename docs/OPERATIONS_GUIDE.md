@@ -130,7 +130,41 @@ If an unexpected server reboot or container restart occurs:
 
 ---
 
-## 5. Emergency Stop Runbook
+## 5. One-Click Windows Start/Stop Operations
+
+For Windows desktop users, use the provided clickable batch scripts for convenient bot management:
+
+### 5.1 Click Scripts
+
+| Script | Action | Description |
+|--------|--------|-------------|
+| **`start_bot.bat`** | Start Bot + Launch Dashboard | Double-click to launch the autonomous bot in a new console window and automatically open the web dashboard at `http://localhost:8080`. The bot runs in the background with dry-run mode.
+
+| **`stop_bot.bat`** | Graceful Shutdown | Double-click to gracefully stop the bot. Sends shutdown signal to bot's REST API, waits for graceful termination (10 seconds), then opens the dashboard to verify system state. Preserves portfolio and audit ledger.
+
+| **`restart_bot.bat`** | Stop + Start | Runs `stop_bot.bat`, waits 2 seconds, then launches `start_bot.bat`. Useful for quick restarts without losing bot state.
+
+### 5.2 Usage
+
+1. **Starting the Bot**: Double-click `start_bot.bat` from your command prompt in the bot's root directory (`D:\MKT\BOT Experiments\BTCETH`).
+
+2. **Stopping the Bot**: Double-click `stop_bot.bat` from the same directory while the bot is running.
+
+3. **Automatic Browser Opening**: Both scripts automatically open the web dashboard URL after starting or stopping, so you can immediately verify bot status and system metrics.
+
+4. **Script Output**: The scripts provide visual feedback and keep the console window open, making it easy to monitor execution.
+
+### 5.3 Script Features
+
+- **Automatic Python Detection**: Scripts detect if `.venv\Scripts\python.exe` or `venv\Scripts\python.exe` exists, or fall back to system PATH.
+- **PID Management**: Track and manage bot process IDs using `data\bot.pid` file.
+- **Stale PID Cleanup**: Automatically detect and remove stale PID files if the process is not running.
+- **State Preservation**: Gracefully shutdown preserves portfolio and order state to `data\portfolio_state.json` and `data\order_state.json`.
+- **Audit Trail Integrity**: Verifies and maintains cryptographic audit trail throughout shutdown.
+
+---
+
+## 6. Emergency Stop Runbook
 
 If you need to halt the bot immediately and liquidate all positions to cash:
 

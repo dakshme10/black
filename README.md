@@ -139,6 +139,20 @@ roostoo-bot/
 
 ## Quick Start Guide
 
+### One-Click Windows Launch (Recommended)
+
+For Windows users, the easiest way to start and stop the bot is using the provided clickable scripts:
+
+| Script | Action |
+|--------|--------|
+| **`start_bot.bat`** | Double-click to launch the bot in a new console window and **automatically open the web dashboard** at `http://localhost:8080` |
+| **`stop_bot.bat`** | Double-click to **gracefully shut down** the bot (preserves state, audit trail, portfolio) |
+| **`restart_bot.bat`** | Double-click to gracefully stop and then restart the bot |
+
+> **Note:** These scripts auto-detect Python (virtual environment or system PATH), handle PID tracking, and require no terminal commands.
+
+---
+
 ### 1. Local Setup
 
 Clone the repository and install dependencies in a Python 3.11 virtual environment:

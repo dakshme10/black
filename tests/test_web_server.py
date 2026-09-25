@@ -217,3 +217,14 @@ def test_websocket_telemetry_stream(mock_bot):
         assert "portfolio" in data
         assert "competition" in data
         assert "server_time" in data
+
+
+def test_command_graceful_shutdown(mock_bot):
+    server = WebServer(mock_bot, port=8080)
+    client = TestClient(server.app)
+
+    res = client.post("/command/shutdown")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "success"
+    assert "shutdown" in data["message"].lower()

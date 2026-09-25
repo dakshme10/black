@@ -202,6 +202,16 @@ class RoostooAutonomousBot:
         self.last_market_update = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
         self.is_running = True
 
+        # Write PID file and clear any stale shutdown sentinel
+        try:
+            os.makedirs("data", exist_ok=True)
+            with open("data/bot.pid", "w", encoding="utf-8") as f:
+                f.write(str(os.getpid()))
+            if os.path.exists("data/shutdown.trigger"):
+                os.remove("data/shutdown.trigger")
+        except Exception as e:
+            self.logger.log_system_event("PID_FILE_WARNING", f"Could not record PID: {e}")
+
         # Launch Web Dashboard Server if enabled
         if self.web_server:
             print(f"\n[+] Starting Web Telemetry Dashboard on http://{self.config.web.host}:{self.config.web.port} ...")
@@ -415,6 +425,9 @@ class RoostooAutonomousBot:
         """
         Graceful shutdown: preserves state, verifies audit integrity, and logs clean exit.
         """
+        if getattr(self, "_is_shutting_down", False):
+            return
+        self._is_shutting_down = True
         self.is_running = False
         print("\n[+] Initiating graceful shutdown...")
 
@@ -423,6 +436,14 @@ class RoostooAutonomousBot:
 
         self.portfolio._persist()
         self.order_manager._persist()
+
+        # Clean up PID and shutdown sentinel
+        for fpath in ("data/bot.pid", "data/shutdown.trigger"):
+            try:
+                if os.path.exists(fpath):
+                    os.remove(fpath)
+            except Exception:
+                pass
 
         # Audit trail integrity check
         valid, msg, count = self.logger.verify_integrity()
@@ -805,6 +826,11 @@ def main():
 
     try:
         while bot.is_running:
+            if os.path.exists("data/shutdown.trigger"):
+                print("\n[!] Graceful shutdown trigger detected (sentinel file). Exiting...")
+                bot.shutdown()
+                break
+
             bot.run_cycle()
             dashboard_counter += 1
 
@@ -812,7 +838,14 @@ def main():
             if dashboard_counter % 2 == 0:
                 bot.render_observability_dashboard()
 
-            time.sleep(poll_interval)
+            # Responsive sleep loop checking for shutdown trigger
+            sleep_slices = max(1, int(poll_interval / 0.5))
+            slice_dur = poll_interval / sleep_slices
+            for _ in range(sleep_slices):
+                if not bot.is_running or os.path.exists("data/shutdown.trigger"):
+                    break
+                time.sleep(slice_dur)
+
     except KeyboardInterrupt:
         bot.shutdown()
 
