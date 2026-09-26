@@ -59,6 +59,64 @@ class TrailingStopConfig:
 
 
 @dataclass
+class AutoSLConfig:
+    """
+    Configuration for AutoSL Stop Loss Trailing & Breakout Failed Exit Engine.
+    """
+    # Phase 1 Validation Window
+    validation_candles: int = 2
+    candle_timeframe_seconds: int = 60
+    min_expansion_percent: float = 1.0
+    phase2_profit_activation: float = 2.0
+
+    # Layer A & B Trailing Stop
+    hard_sl_trailing_step: float = 10.0
+    hard_sl_step_usd: Dict[str, float] = field(default_factory=lambda: {
+        "BTC/USD": 50.0,
+        "ETH/USD": 4.0,
+        "SOL/USD": 0.5,
+        "BTCUSDT": 50.0,
+        "ETHUSDT": 4.0,
+        "SOLUSDT": 0.5,
+    })
+    recalc_interval_seconds: float = 60.0
+    min_tick_buffer: float = 0.5
+    tick_size: float = 0.1
+    profit_protection_tiers: List[Dict[str, float]] = field(default_factory=lambda: [
+        {"profit_pct": 10.0, "sl_percent": 0.4},
+        {"profit_pct": 5.0, "sl_percent": 0.6},
+        {"profit_pct": 3.0, "sl_percent": 0.9},
+        {"profit_pct": 1.5, "sl_percent": 1.2},
+    ])
+
+    # Fast Momentum Extension
+    momentum_extension_enabled: bool = True
+    fast_target_max_seconds: float = 180.0
+    max_extensions: int = 3
+    profit_lock_ratio: float = 0.50
+    extreme_range_threshold_pct: float = 0.2
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "validation_candles": self.validation_candles,
+            "candle_timeframe_seconds": self.candle_timeframe_seconds,
+            "min_expansion_percent": self.min_expansion_percent,
+            "phase2_profit_activation": self.phase2_profit_activation,
+            "hard_sl_trailing_step": self.hard_sl_trailing_step,
+            "hard_sl_step_usd": self.hard_sl_step_usd,
+            "recalc_interval_seconds": self.recalc_interval_seconds,
+            "min_tick_buffer": self.min_tick_buffer,
+            "tick_size": self.tick_size,
+            "profit_protection_tiers": self.profit_protection_tiers,
+            "momentum_extension_enabled": self.momentum_extension_enabled,
+            "fast_target_max_seconds": self.fast_target_max_seconds,
+            "max_extensions": self.max_extensions,
+            "profit_lock_ratio": self.profit_lock_ratio,
+            "extreme_range_threshold_pct": self.extreme_range_threshold_pct,
+        }
+
+
+@dataclass
 class MarketDataConfig:
     pairs: List[str] = field(default_factory=lambda: ["BTC/USD", "ETH/USD"])
     poll_interval_seconds: float = 5.0
@@ -134,6 +192,7 @@ class AppConfig:
     risk_controls: RiskControlsConfig = field(default_factory=RiskControlsConfig)
     fees: FeesConfig = field(default_factory=FeesConfig)
     trailing_stop: TrailingStopConfig = field(default_factory=TrailingStopConfig)
+    autosl: AutoSLConfig = field(default_factory=AutoSLConfig)
     market_data: MarketDataConfig = field(default_factory=MarketDataConfig)
     regime: RegimeConfig = field(default_factory=RegimeConfig)
     strategies: StrategiesConfig = field(default_factory=StrategiesConfig)
@@ -226,6 +285,31 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
             trail_activation_r=float(ts.get("trail_activation_r", app_cfg.trailing_stop.trail_activation_r)),
             atr_multiplier=float(ts.get("atr_multiplier", app_cfg.trailing_stop.atr_multiplier)),
             atr_period=int(ts.get("atr_period", app_cfg.trailing_stop.atr_period)),
+        )
+
+    # Populate AutoSL (Stop Loss Trailing & Breakout Failed Exit)
+    if "autosl" in raw_cfg or "exit_engine" in raw_cfg:
+        asl = raw_cfg.get("autosl") or raw_cfg.get("exit_engine", {})
+        vw = asl.get("validation_window", {})
+        tsl = asl.get("trailing_stop_loss", {})
+        me = asl.get("momentum_extension", {})
+
+        app_cfg.autosl = AutoSLConfig(
+            validation_candles=int(vw.get("validation_candles", asl.get("validation_candles", app_cfg.autosl.validation_candles))),
+            candle_timeframe_seconds=int(vw.get("candle_timeframe_seconds", asl.get("candle_timeframe_seconds", app_cfg.autosl.candle_timeframe_seconds))),
+            min_expansion_percent=float(vw.get("min_expansion_percent", asl.get("min_expansion_percent", app_cfg.autosl.min_expansion_percent))),
+            phase2_profit_activation=float(vw.get("phase2_profit_activation", asl.get("phase2_profit_activation", app_cfg.autosl.phase2_profit_activation))),
+            hard_sl_trailing_step=float(tsl.get("hard_sl_trailing_step", asl.get("hard_sl_trailing_step", app_cfg.autosl.hard_sl_trailing_step))),
+            hard_sl_step_usd=tsl.get("hard_sl_step_usd", asl.get("hard_sl_step_usd", app_cfg.autosl.hard_sl_step_usd)),
+            recalc_interval_seconds=float(tsl.get("recalc_interval_seconds", asl.get("recalc_interval_seconds", app_cfg.autosl.recalc_interval_seconds))),
+            min_tick_buffer=float(tsl.get("min_tick_buffer", asl.get("min_tick_buffer", app_cfg.autosl.min_tick_buffer))),
+            tick_size=float(tsl.get("tick_size", asl.get("tick_size", app_cfg.autosl.tick_size))),
+            profit_protection_tiers=tsl.get("profit_protection_tiers", asl.get("profit_protection_tiers", app_cfg.autosl.profit_protection_tiers)),
+            momentum_extension_enabled=bool(me.get("enabled", asl.get("momentum_extension_enabled", app_cfg.autosl.momentum_extension_enabled))),
+            fast_target_max_seconds=float(me.get("fast_target_max_seconds", asl.get("fast_target_max_seconds", app_cfg.autosl.fast_target_max_seconds))),
+            max_extensions=int(me.get("max_extensions", asl.get("max_extensions", app_cfg.autosl.max_extensions))),
+            profit_lock_ratio=float(me.get("profit_lock_ratio", asl.get("profit_lock_ratio", app_cfg.autosl.profit_lock_ratio))),
+            extreme_range_threshold_pct=float(me.get("extreme_range_threshold_pct", asl.get("extreme_range_threshold_pct", app_cfg.autosl.extreme_range_threshold_pct))),
         )
 
     # Populate market data

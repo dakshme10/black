@@ -37,6 +37,34 @@ trailing_stop:
   atr_multiplier: 1.5          # ATR distance for dynamic trailing
   atr_period: 14
 
+autosl:
+  validation_window:
+    validation_candles: 2
+    candle_timeframe_seconds: 60
+    min_expansion_percent: 1.0
+    phase2_profit_activation: 2.0
+  trailing_stop_loss:
+    min_tick_buffer: 0.5
+    tick_size: 0.1
+    recalc_interval_seconds: 60.0
+    profit_protection_tiers:
+      - { profit_pct: 10.0, sl_percent: 0.4 }
+      - { profit_pct: 5.0, sl_percent: 0.6 }
+      - { profit_pct: 3.0, sl_percent: 0.9 }
+      - { profit_pct: 1.5, sl_percent: 1.2 }
+    hard_sl_trailing_step: 10.0
+    hard_sl_step_usd:
+      BTC/USD: 50.0
+      ETH/USD: 4.0
+      SOL/USD: 0.5
+  momentum_extension:
+    enabled: true
+    fast_target_max_seconds: 180.0
+    max_extensions: 3
+    profit_lock_ratio: 0.50
+    extreme_range_threshold_pct: 0.2
+
+
 market_data:
   pairs:
     - "BTC/USD"

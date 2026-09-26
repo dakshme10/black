@@ -20,6 +20,7 @@ from backtest.engine import BacktestEngine
 from backtest.walk_forward import WalkForwardValidator
 from config.trading_params import AppConfig, load_config
 from core.api_client import RoostooClient
+from core.autosl_exit_engine import AutoSLExitEngine, CryptoPosition
 from core.feature_engine import FeatureEngine
 from core.market_data import MarketDataManager
 from core.order_executor import OrderExecutor
@@ -27,6 +28,7 @@ from core.performance import PerformanceEngine
 from core.regime_detector import MarketRegime, RegimeDetector
 from core.risk_manager import RiskManager
 from core.strategy_engine import Signal, StrategyEngine
+from core.version import get_deployment_metadata, get_git_commit_sha
 from logs.audit_logger import AuditLogger
 from state.order_state import OrderStateManager
 from state.portfolio_tracker import PortfolioTracker
@@ -42,6 +44,8 @@ class RoostooAutonomousBot:
     def __init__(self, config: AppConfig):
         self.config = config
         self.is_running = False
+        self.git_commit = get_git_commit_sha()
+
 
         # 1. Audit Logger with SHA-256 hash chaining
         self.logger = AuditLogger(
@@ -98,6 +102,9 @@ class RoostooAutonomousBot:
             fees_config=config.fees,
             audit_logger=self.logger,
         )
+
+        # 5b. AutoSL Dynamic Exit Engine
+        self.autosl_engine = AutoSLExitEngine(config=config.autosl.to_dict())
 
         # 6. Reconciliation Engine
         self.reconciliation = ReconciliationEngine(
@@ -165,15 +172,29 @@ class RoostooAutonomousBot:
         Execute startup sequence, reconciliation, and safety checks.
         """
         mode_str = "LIVE" if self.config.is_live else "DRY_RUN"
+        meta = get_deployment_metadata(is_live=self.config.is_live)
+        self.git_commit = meta["git_commit"]
         self.logger.log_system_event(
             "STARTUP",
-            f"Roostoo Autonomous Quant Bot starting up in MODE={mode_str}",
-            {"mode": mode_str, "dry_run": self.config.dry_run, "live_enabled": self.config.live_trading_enabled},
+            f"AutoSL Autonomous Quant Bot starting up in MODE={mode_str} (Git SHA: {meta['git_commit']})",
+            {
+                "mode": mode_str,
+                "version": meta["version"],
+                "git_commit": meta["git_commit"],
+                "environment": meta["environment"],
+                "started_at": meta["started_at"],
+                "dry_run": self.config.dry_run,
+                "live_enabled": self.config.live_trading_enabled,
+            },
         )
 
         print("\n" + "=" * 70)
-        print(f"   ROOSTOO AUTONOMOUS QUANT BOT - STARTUP [MODE = {mode_str}]")
+        print(f"   AUTOSL QUANT TRADING BOT - STARTUP [MODE = {mode_str}]")
+        print(f"   Version/Commit : {meta['git_commit']}")
+        print(f"   Environment    : {meta['environment']}")
+        print(f"   Started        : {meta['started_at']}")
         print("=" * 70)
+
 
         # Validate Live Safety Gate
         gate_ok, gate_msg = self.verify_live_safety_gate()
@@ -263,7 +284,8 @@ class RoostooAutonomousBot:
                     self.executor.execute_decision(sig_liquidate, risk_dec, px)
             return
 
-        # 4. Manage Open Positions (Trailing Stops & Hard Stops)
+        # 4. Manage Open Positions via AutoSL Exit Engine
+        # (Phase 1 Validation Window + Phase 2 Dynamic Trailing + Fast Momentum Extension)
         for sym, pos in list(self.portfolio.positions.items()):
             if pos.quantity <= 0:
                 continue
@@ -272,56 +294,84 @@ class RoostooAutonomousBot:
             if curr_px <= 0:
                 continue
 
-            # Update trailing stop ratchet
+            # Fetch candle series for volume and extreme range tracking
             df_5m = self.market_data.get_candle_df(sym, timeframe="5m", limit=30)
-            atr_val = 0.0
-            if len(df_5m) > 14:
-                atr_s = FeatureEngine.calculate_atr(df_5m, period=14)
-                atr_val = float(atr_s.iloc[-1])
+            curr_vol = float(df_5m["volume"].iloc[-1]) if len(df_5m) > 0 and "volume" in df_5m.columns else 0.0
+            prev_vol = float(df_5m["volume"].iloc[-2]) if len(df_5m) > 1 and "volume" in df_5m.columns else 0.0
+            prev_prev_vol = float(df_5m["volume"].iloc[-3]) if len(df_5m) > 2 and "volume" in df_5m.columns else 0.0
+            recent_high = float(df_5m["high"].tail(10).max()) if len(df_5m) > 0 and "high" in df_5m.columns else curr_px
+            recent_low = float(df_5m["low"].tail(10).min()) if len(df_5m) > 0 and "low" in df_5m.columns else curr_px
 
-            self.risk_manager.update_trailing_stop(sym, curr_px, atr=atr_val)
+            sym_prec = self.executor.get_symbol_precision(sym)
+            px_prec = int(sym_prec.get("PricePrecision", 2))
+            tick_sz = 10 ** (-px_prec)
 
-            # Check Hard Stop Trigger
-            if curr_px <= pos.stop_loss and pos.stop_loss > 0:
-                self.logger.log_system_event("STOP_TRIGGERED", f"{sym} breached stop loss at {pos.stop_loss:.2f}")
+            # Convert to AutoSL CryptoPosition
+            cp = pos.to_crypto_position()
+            prev_broker_sl = cp.broker_sl_price
+
+            # Evaluate tick through AutoSL Exit Engine
+            exit_reason, trigger_px = self.autosl_engine.on_tick(
+                pos=cp,
+                current_price=curr_px,
+                current_candle_vol=curr_vol,
+                prev_completed_vol=prev_vol,
+                prev_prev_completed_vol=prev_prev_vol,
+                recent_market_high=recent_high,
+                recent_market_low=recent_low,
+                current_time=datetime.now(timezone.utc),
+                tick_size=tick_sz,
+            )
+
+            # Sync updated state back into portfolio tracker position
+            pos.update_from_crypto_position(cp)
+
+            # If broker hard stop was ratcheted, update exchange stop order
+            if cp.broker_sl_price != prev_broker_sl:
+                self.executor.update_exchange_stop_order(sym, cp.broker_sl_price)
+
+            # Process exit signal if triggered
+            if exit_reason:
+                trigger_price_val = trigger_px or curr_px
+                # Calculate loss savings if FAILED_BREAKOUT_EXIT
+                extra_details: Dict[str, Any] = {"exit_reason": exit_reason, "price": trigger_price_val}
+                if exit_reason == "FAILED_BREAKOUT_EXIT":
+                    full_sl = pos.initial_stop_loss or (pos.entry_price * 0.98 if pos.side == "BUY" else pos.entry_price * 1.02)
+                    full_sl_loss = abs((pos.entry_price - full_sl) / pos.entry_price * 100.0) if pos.entry_price > 0 else 2.0
+                    actual_loss = abs((pos.entry_price - trigger_price_val) / pos.entry_price * 100.0) if pos.entry_price > 0 else 0.5
+                    saved_loss = max(0.0, full_sl_loss - actual_loss)
+                    extra_details["saved_loss_pct"] = saved_loss
+                    self.logger.log_system_event(
+                        "FAILED_BREAKOUT_EXIT",
+                        f"[FAILED_BREAKOUT_EXIT] {sym} ({pos.side}): Early invalidation executed at ${trigger_price_val:,.2f}. "
+                        f"Loss={actual_loss:.2f}% (Saved ~{saved_loss:.2f}% vs full SL hit).",
+                        extra_details,
+                    )
+                else:
+                    self.logger.log_system_event(
+                        f"AUTOSL_{exit_reason}",
+                        f"[AUTOSL] {sym} ({pos.side}): {exit_reason} triggered at ${trigger_price_val:,.2f}.",
+                        extra_details,
+                    )
+
                 stop_sig = Signal(
-                    strategy="RISK_MANAGER",
+                    strategy="AUTOSL_ENGINE",
                     symbol=sym,
                     direction="DE_RISK",
                     confidence=1.0,
-                    entry_price=curr_px,
+                    entry_price=trigger_price_val,
                     stop_loss=0.0,
                     take_profit_1=0.0,
                     take_profit_2=0.0,
                     expected_rr=0.0,
-                    reason=f"Stop loss triggered at {curr_px:.2f} <= {pos.stop_loss:.2f}",
+                    reason=f"[{exit_reason}] {sym} ({pos.side}) triggered at {trigger_price_val:.2f}",
                     regime="",
                     timestamp=int(time.time() * 1000),
+                    metadata=extra_details,
                 )
                 risk_dec = self.risk_manager.evaluate_signal(stop_sig)
-                self.executor.execute_decision(stop_sig, risk_dec, curr_px)
-                self.last_order = f"STOP_EXIT {sym} @ {curr_px:.2f}"
-                continue
-
-            # Check Take Profit 2 Trigger
-            if curr_px >= pos.take_profit_2 and pos.take_profit_2 > 0:
-                tp_sig = Signal(
-                    strategy="STRATEGY_ENGINE",
-                    symbol=sym,
-                    direction="DE_RISK",
-                    confidence=1.0,
-                    entry_price=curr_px,
-                    stop_loss=0.0,
-                    take_profit_1=0.0,
-                    take_profit_2=0.0,
-                    expected_rr=0.0,
-                    reason=f"Take Profit 2 target reached at {curr_px:.2f}",
-                    regime="",
-                    timestamp=int(time.time() * 1000),
-                )
-                risk_dec = self.risk_manager.evaluate_signal(tp_sig)
-                self.executor.execute_decision(tp_sig, risk_dec, curr_px)
-                self.last_order = f"TP2_EXIT {sym} @ {curr_px:.2f}"
+                order = self.executor.execute_decision(stop_sig, risk_dec, trigger_price_val)
+                self.last_order = f"{exit_reason} {sym} @ {trigger_price_val:.2f}"
                 continue
 
         # 5. Evaluate Target Pairs for New Trading Opportunities

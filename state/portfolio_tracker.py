@@ -14,6 +14,10 @@ import time
 from typing import Any, Dict, List, Optional
 
 
+from datetime import datetime, timezone
+import math
+
+
 @dataclass
 class Position:
     symbol: str
@@ -30,9 +34,110 @@ class Position:
     opened_timestamp: int = 0
     highest_price: float = 0.0  # Used for trailing stops
 
+    # AutoSL Tracking Fields (Two-Phase Lifecycle + Dynamic Trailing + Momentum Extension)
+    side: str = "BUY"
+    entry_breakout_level: float = 0.0
+    entry_candle_volume: float = 0.0
+    prev_candle_volume: float = 0.0
+    initial_stop_loss: float = 0.0
+    broker_sl_price: float = 0.0
+    sl_percent: float = 2.0
+    peak_profit_points: float = 0.0
+    locked_profit: float = 0.0
+    candles_since_entry: int = 0
+    last_candle_time: Optional[float] = None  # epoch seconds
+    validation_survived: bool = False
+    volume_drop_detected: bool = False
+    trailing_sl_active: bool = False
+    is_exit_initiated: bool = False
+    momentum_status: str = "NORMAL"
+    original_target_distance: float = 0.0
+    extension_level: int = 0
+    last_sl_recalc_time: float = 0.0
+    broker_sl_order_id: Optional[str] = None
+    broker_tp_order_id: Optional[str] = None
+
     @property
     def notional_value(self) -> float:
         return self.quantity * self.current_price
+
+    @property
+    def phase(self) -> str:
+        if self.momentum_status.startswith("MOMENTUM_EXTENSION") or self.momentum_status == "FINAL_TRAILING":
+            return self.momentum_status
+        if self.validation_survived:
+            return "PHASE_2_VALIDATED"
+        return "PHASE_1_VALIDATION"
+
+    def to_crypto_position(self) -> Any:
+        """Convert to AutoSL CryptoPosition object for tick evaluation."""
+        from core.autosl_exit_engine import CryptoPosition
+        entry_dt = (
+            datetime.fromtimestamp(self.opened_timestamp / 1000.0, tz=timezone.utc)
+            if self.opened_timestamp > 0
+            else datetime.now(timezone.utc)
+        )
+        last_c_dt = (
+            datetime.fromtimestamp(self.last_candle_time, tz=timezone.utc)
+            if self.last_candle_time is not None
+            else entry_dt
+        )
+        return CryptoPosition(
+            position_id=f"{self.symbol}_{self.opened_timestamp}",
+            symbol=self.symbol,
+            side=self.side,
+            quantity=self.quantity,
+            entry_price=self.entry_price,
+            entry_time=entry_dt,
+            entry_breakout_level=self.entry_breakout_level if self.entry_breakout_level > 0 else self.entry_price,
+            entry_candle_volume=self.entry_candle_volume,
+            prev_candle_volume=self.prev_candle_volume,
+            initial_stop_loss=self.initial_stop_loss if self.initial_stop_loss > 0 else self.stop_loss,
+            stop_loss_price=self.stop_loss,
+            take_profit_price=self.take_profit_2 if self.take_profit_2 > 0 else self.take_profit_1,
+            broker_sl_price=self.broker_sl_price if self.broker_sl_price > 0 else self.stop_loss,
+            sl_percent=self.sl_percent,
+            status="OPEN",
+            current_price=self.current_price,
+            peak_price=self.highest_price if self.highest_price > 0 else self.entry_price,
+            peak_profit_points=self.peak_profit_points,
+            locked_profit=self.locked_profit,
+            candles_since_entry=self.candles_since_entry,
+            last_candle_time=last_c_dt,
+            validation_survived=self.validation_survived,
+            volume_drop_detected=self.volume_drop_detected,
+            trailing_sl_active=self.trailing_sl_active,
+            is_exit_initiated=self.is_exit_initiated,
+            momentum_status=self.momentum_status,
+            original_target_distance=self.original_target_distance,
+            extension_level=self.extension_level,
+            last_sl_recalc_time=self.last_sl_recalc_time,
+            broker_sl_order_id=self.broker_sl_order_id,
+            broker_tp_order_id=self.broker_tp_order_id,
+        )
+
+    def update_from_crypto_position(self, cp: Any) -> None:
+        """Sync updated state from CryptoPosition back into this ledger Position."""
+        self.stop_loss = cp.stop_loss_price
+        self.highest_price = cp.peak_price
+        self.broker_sl_price = cp.broker_sl_price
+        self.sl_percent = cp.sl_percent
+        self.peak_profit_points = cp.peak_profit_points
+        self.locked_profit = cp.locked_profit
+        self.candles_since_entry = cp.candles_since_entry
+        self.last_candle_time = cp.last_candle_time.timestamp() if cp.last_candle_time else None
+        self.validation_survived = cp.validation_survived
+        self.volume_drop_detected = cp.volume_drop_detected
+        self.trailing_sl_active = cp.trailing_sl_active
+        self.is_exit_initiated = cp.is_exit_initiated
+        self.momentum_status = cp.momentum_status
+        if cp.take_profit_price > 0 and not math.isinf(cp.take_profit_price):
+            self.take_profit_2 = cp.take_profit_price
+        self.original_target_distance = cp.original_target_distance
+        self.extension_level = cp.extension_level
+        self.last_sl_recalc_time = cp.last_sl_recalc_time
+        self.broker_sl_order_id = cp.broker_sl_order_id
+        self.broker_tp_order_id = cp.broker_tp_order_id
 
 
 @dataclass
@@ -139,6 +244,9 @@ class PortfolioTracker:
         stop_loss: float = 0.0,
         take_profit_1: float = 0.0,
         take_profit_2: float = 0.0,
+        entry_breakout_level: float = 0.0,
+        entry_candle_volume: float = 0.0,
+        prev_candle_volume: float = 0.0,
     ) -> None:
         """
         Process order fill in the portfolio ledger.
@@ -149,6 +257,9 @@ class PortfolioTracker:
             self.cumulative_fees += fee
 
             base_coin = symbol.split("/")[0]
+            calculated_sl_pct = (abs(price - stop_loss) / price * 100.0) if (stop_loss > 0 and price > 0) else 2.0
+            breakout_lvl = entry_breakout_level if entry_breakout_level > 0 else price
+            target_dist = abs(take_profit_2 - price) if take_profit_2 > 0 else abs(take_profit_1 - price) if take_profit_1 > 0 else 0.0
 
             if side.upper() == "BUY":
                 self.cash -= (notional + fee)
@@ -181,6 +292,25 @@ class PortfolioTracker:
                         take_profit_2=take_profit_2,
                         opened_timestamp=int(time.time() * 1000),
                         highest_price=price,
+                        side="BUY",
+                        entry_breakout_level=breakout_lvl,
+                        entry_candle_volume=entry_candle_volume,
+                        prev_candle_volume=prev_candle_volume,
+                        initial_stop_loss=stop_loss,
+                        broker_sl_price=stop_loss,
+                        sl_percent=calculated_sl_pct,
+                        peak_profit_points=0.0,
+                        locked_profit=0.0,
+                        candles_since_entry=0,
+                        last_candle_time=time.time(),
+                        validation_survived=False,
+                        volume_drop_detected=False,
+                        trailing_sl_active=False,
+                        is_exit_initiated=False,
+                        momentum_status="NORMAL",
+                        original_target_distance=target_dist,
+                        extension_level=0,
+                        last_sl_recalc_time=time.time(),
                     )
 
             elif side.upper() == "SELL":
@@ -294,7 +424,11 @@ class PortfolioTracker:
             self.peak_equity = float(data.get("peak_equity", self.initial_capital))
 
             pos_dict = data.get("positions", {})
-            self.positions = {sym: Position(**p) for sym, p in pos_dict.items()}
+            valid_fields = set(Position.__dataclass_fields__.keys())
+            self.positions = {
+                sym: Position(**{k: v for k, v in p.items() if k in valid_fields})
+                for sym, p in pos_dict.items()
+            }
 
             curve_data = data.get("equity_curve", [])
             self.equity_curve = [EquitySnapshot(**s) for s in curve_data]

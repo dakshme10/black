@@ -115,6 +115,24 @@ class StrategyEngine:
         if sig_cvd["direction"] != "NO_TRADE":
             raw_signals.append(sig_cvd)
 
+        curr_vol = float(df["volume"].iloc[-1]) if ("volume" in df.columns and len(df) > 0) else 0.0
+        prev_vol = float(df["volume"].iloc[-2]) if ("volume" in df.columns and len(df) > 1) else 0.0
+        for s in raw_signals:
+            meta = s.setdefault("metadata", {})
+            meta.setdefault("candle_volume", curr_vol)
+            meta.setdefault("prev_candle_volume", prev_vol)
+            if "breakout_level" not in meta:
+                if "sweep_low" in meta and meta["sweep_low"]:
+                    meta["breakout_level"] = float(meta["sweep_low"])
+                elif "sweep_high" in meta and meta["sweep_high"]:
+                    meta["breakout_level"] = float(meta["sweep_high"])
+                elif "val" in meta and meta["val"]:
+                    meta["breakout_level"] = float(meta["val"])
+                elif "vah" in meta and meta["vah"]:
+                    meta["breakout_level"] = float(meta["vah"])
+                else:
+                    meta["breakout_level"] = float(s.get("entry_price", 0.0))
+
         if not raw_signals:
             return self._create_no_trade_signal(
                 symbol,

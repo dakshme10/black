@@ -741,6 +741,7 @@
                 <div class="brand-title">
                     AUTONOMOUS SPOT BOT
                     <span id="badge-mode" class="pill pill-dry">DRY_RUN [SIMULATION]</span>
+                    <span id="badge-git" class="pill mono" style="background: rgba(148, 163, 184, 0.12); border: 1px solid #334466; color: #94a3b8;" title="Deployed Git Commit SHA">GIT: <span id="git-commit-val">HEAD</span></span>
                     <span id="badge-pause" class="pill pill-blue" style="display:none;">PAUSED</span>
                 </div>
                 <div class="brand-sub">Production Quant System • Value Area • Liquidity Sweeps • CVD Absorption</div>
@@ -1462,6 +1463,11 @@
                 modeBadge.innerText = 'DRY_RUN [SIMULATION]';
             }
 
+            if (status.git_commit) {
+                const gitEl = document.getElementById('git-commit-val');
+                if (gitEl) gitEl.innerText = status.git_commit;
+            }
+
             const pauseBadge = document.getElementById('badge-pause');
             const pauseBtn = document.getElementById('btn-pause');
             if (status.paused) {
@@ -2015,10 +2021,17 @@
                 const pnlPct = p.unrealized_pnl_pct || 0;
                 const pnlClass = pnl >= 0 ? 'text-pos' : 'text-neg';
 
+                const sideStr = p.side || 'BUY';
+                const sidePill = sideStr === 'SELL' ? 'pill-red' : 'pill-live';
+                const phaseStr = p.phase || 'PHASE_1_VALIDATION';
+                let phaseBadgeClass = 'pill-purple';
+                if (phaseStr.includes('VALIDATED') || phaseStr.includes('PHASE_2')) phaseBadgeClass = 'pill-live';
+                else if (phaseStr.includes('MOMENTUM') || phaseStr.includes('TRAILING')) phaseBadgeClass = 'pill-blue';
+
                 html += `
                 <tr>
                     <td class="mono font-bold">${p.symbol}</td>
-                    <td><span class="pill pill-live mono">BUY (SPOT)</span></td>
+                    <td><span class="pill ${sidePill} mono">${sideStr} (${sideStr === 'SELL' ? 'SHORT' : 'LONG'})</span></td>
                     <td class="mono">${p.quantity.toFixed(4)} ${p.base_coin}</td>
                     <td class="mono">$${p.entry_price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                     <td class="mono font-bold">$${p.current_price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
@@ -2027,8 +2040,9 @@
                         <b>${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</b> (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)
                     </td>
                     <td>
-                        <span class="pill pill-purple mono" style="font-size:10px;">${p.trailing_status || 'Initial Stop'}</span>
-                        <div style="font-size:10px; color:var(--text-dim);" class="mono">SL: $${(p.stop_loss || 0).toFixed(2)}</div>
+                        <span class="pill ${phaseBadgeClass} mono" style="font-size:10px;">${p.trailing_status || 'Initial Stop'}</span>
+                        <div style="font-size:10px; color:var(--text-dim);" class="mono">SL: $${(p.stop_loss || 0).toFixed(2)} | Dynamic: ${(p.sl_percent || 2.0).toFixed(1)}%</div>
+                        ${(p.locked_profit || 0) > 0 ? `<div style="font-size:10px; color:var(--positive);" class="mono">🔒 Locked: +$${p.locked_profit.toFixed(2)}</div>` : ''}
                     </td>
                     <td class="mono text-pos">$${(p.take_profit_1 || 0).toFixed(2)}</td>
                     <td class="mono text-pos">$${(p.take_profit_2 || 0).toFixed(2)}</td>

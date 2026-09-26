@@ -7,8 +7,9 @@ idempotent order submission (or simulated fill in DRY_RUN) -> UNKNOWN state prot
 
 from __future__ import annotations
 
+import math
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from config.trading_params import AppConfig, FeesConfig
 from core.api_client import RoostooAPIError, RoostooClient, UnknownOrderStateError
@@ -61,6 +62,59 @@ class OrderExecutor:
             "MiniOrder": 1.0,
         })
 
+    def cancel_opposing_orders(self, symbol: str) -> List[str]:
+        """
+        Cancel any resting or pending orders for the specified symbol.
+        Used upon position exit (e.g. FAILED_BREAKOUT_EXIT, SL_HIT, TP_HIT)
+        to prevent orphaned trigger orders from filling after exit.
+        """
+        cancelled_ids = []
+        active_orders = self.order_manager.get_active_orders(symbol=symbol)
+        for ord in active_orders:
+            try:
+                if not self.config.dry_run and self.config.live_trading_enabled and ord.exchange_order_id:
+                    self.client.cancel_order(order_id=ord.exchange_order_id)
+                self.order_manager.update_order(
+                    client_order_id=ord.client_order_id,
+                    status=OrderStatus.CANCELED,
+                    error_msg="Cancelled opposing order upon position exit",
+                )
+                cancelled_ids.append(ord.client_order_id)
+                if self.audit_logger:
+                    self.audit_logger.log_order_event(
+                        event="OPPOSING_ORDER_CANCELLED",
+                        symbol=symbol,
+                        side=ord.side,
+                        order_type=ord.order_type,
+                        quantity=ord.quantity,
+                        client_order_id=ord.client_order_id,
+                        status="CANCELED",
+                        details={"reason": "Position exit cancellation"},
+                    )
+            except Exception as e:
+                if self.audit_logger:
+                    self.audit_logger.log_system_event(
+                        "CANCEL_ORDER_ERROR",
+                        f"Failed to cancel order {ord.client_order_id} for {symbol}: {e}",
+                    )
+        return cancelled_ids
+
+    def update_exchange_stop_order(self, symbol: str, new_stop_price: float) -> bool:
+        """
+        Step ratchet update for hard exchange stop orders (Layer A).
+        """
+        pos = self.portfolio.positions.get(symbol)
+        if not pos:
+            return False
+        pos.broker_sl_price = new_stop_price
+        if self.audit_logger:
+            self.audit_logger.log_system_event(
+                "EXCHANGE_STOP_RATCHETED",
+                f"{symbol} hard stop ratcheted to ${new_stop_price:.2f}",
+                {"symbol": symbol, "broker_sl_price": new_stop_price}
+            )
+        return True
+
     def execute_decision(
         self,
         signal: Signal,
@@ -94,20 +148,38 @@ class OrderExecutor:
                 )
             return None
 
-        # Determine side and quantity
+        # Determine side and quantity with Long/Short awareness
+        current_pos = self.portfolio.positions.get(signal.symbol)
         if signal.direction == "DE_RISK":
-            side = "SELL"
+            # Cancel opposing trigger/resting orders for this symbol first
+            self.cancel_opposing_orders(signal.symbol)
+
+            # If existing position is Short, we BUY to close; if Long, we SELL to close
+            if current_pos and getattr(current_pos, "side", "BUY") == "SELL":
+                side = "BUY"
+            else:
+                side = "SELL"
             qty = risk_decision.adjusted_quantity
             if qty <= 1e-7:
                 return None
         elif signal.direction == "BUY":
             side = "BUY"
             qty = risk_decision.adjusted_quantity
+        elif signal.direction == "SELL":
+            side = "SELL"
+            qty = risk_decision.adjusted_quantity
         else:
             return None
 
+        # Enforce exchange amount precision and price rounding
+        sym_prec = self.get_symbol_precision(signal.symbol)
+        amount_precision = int(sym_prec.get("AmountPrecision", 6))
+        price_precision = int(sym_prec.get("PricePrecision", 2))
+        factor = 10 ** amount_precision
+        qty = math.floor(qty * factor) / factor
+
         order_type = "MARKET"  # Standard competition taker entry for deterministic execution
-        price = current_market_price
+        price = round(current_market_price, price_precision)
         client_order_id = self.order_manager.generate_client_order_id(signal.strategy, signal.symbol)
 
         order = Order(
@@ -153,6 +225,10 @@ class OrderExecutor:
             )
 
             # Record in portfolio ledger
+            breakout_lvl = float(signal.metadata.get("breakout_level", fill_price))
+            candle_vol = float(signal.metadata.get("candle_volume", 0.0))
+            prev_vol = float(signal.metadata.get("prev_candle_volume", 0.0))
+
             self.portfolio.record_fill(
                 symbol=signal.symbol,
                 side=side,
@@ -163,6 +239,9 @@ class OrderExecutor:
                 stop_loss=risk_decision.stop_loss,
                 take_profit_1=risk_decision.take_profit_1,
                 take_profit_2=risk_decision.take_profit_2,
+                entry_breakout_level=breakout_lvl,
+                entry_candle_volume=candle_vol,
+                prev_candle_volume=prev_vol,
             )
 
             if self.audit_logger:
@@ -266,6 +345,10 @@ class OrderExecutor:
 
             # Record in portfolio ledger
             if order.status == OrderStatus.FILLED:
+                breakout_lvl = float(signal.metadata.get("breakout_level", filled_price))
+                candle_vol = float(signal.metadata.get("candle_volume", 0.0))
+                prev_vol = float(signal.metadata.get("prev_candle_volume", 0.0))
+
                 self.portfolio.record_fill(
                     symbol=signal.symbol,
                     side=side,
@@ -276,6 +359,9 @@ class OrderExecutor:
                     stop_loss=risk_decision.stop_loss,
                     take_profit_1=risk_decision.take_profit_1,
                     take_profit_2=risk_decision.take_profit_2,
+                    entry_breakout_level=breakout_lvl,
+                    entry_candle_volume=candle_vol,
+                    prev_candle_volume=prev_vol,
                 )
 
             if self.audit_logger:

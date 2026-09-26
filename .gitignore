@@ -34,10 +34,13 @@ venv.bak/
 
 # Environment variables and secrets - NEVER COMMIT CREDENTIALS
 .env
-.env.local
-.env.*.local
+.env.*
 *.key
 *.pem
+*.secret
+credentials*
+secrets*
+tokens*
 
 # IDEs
 .idea/
@@ -51,14 +54,23 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 
-# Local database and run logs (audit logs can be archived separately)
+# Local database, runtime state, and run logs
+state/*.json
+state/*.db
+state/*.lock
+!state/*.py
+cache/
 data/*.db
 data/*.sqlite
 data/*.json
 data/*.tmp
+data/*.pid
+data/*.trigger
+data/*.lock
 logs/*.log
 logs/*.jsonl
 !logs/audit_logger.py
 
 # Docker local volumes
 docker_volumes/
+

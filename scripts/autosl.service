@@ -1,0 +1,24 @@
+[Unit]
+Description=AutoSL Autonomous Quantitative Trading Bot Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/autosl
+EnvironmentFile=-/home/ubuntu/autosl/.env
+ExecStart=/home/ubuntu/autosl/venv/bin/python3 main.py --config config/config.yaml
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Hardening & limits
+LimitNOFILE=65536
+StandardOutput=append:/home/ubuntu/autosl/logs/autosl_service.log
+StandardError=append:/home/ubuntu/autosl/logs/autosl_service.error.log
+
+[Install]
+WantedBy=multi-user.target
