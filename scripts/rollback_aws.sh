@@ -32,7 +32,7 @@ git reset --hard "$TARGET_COMMIT"
 echo "$TARGET_COMMIT" > "$APP_DIR/.git_commit"
 
 echo "[+] Running test suite on rollback target..."
-"$APP_DIR/venv/bin/pytest" -v tests/
+PYTHONPATH="$APP_DIR" "$APP_DIR/venv/bin/pytest" -v tests/
 
 echo "[+] Restarting $SERVICE_NAME..."
 sudo systemctl restart "$SERVICE_NAME"

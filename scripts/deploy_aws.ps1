@@ -11,7 +11,7 @@
 
 [CmdletBinding()]
 param (
-    [string]$Branch = "master",
+    [string]$Branch = "main",
     [switch]$SkipLocalTests = $false
 )
 

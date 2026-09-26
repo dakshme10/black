@@ -11,7 +11,7 @@ set -euo pipefail
 
 APP_DIR="/home/ubuntu/autosl"
 SERVICE_NAME="autosl.service"
-BRANCH="${1:-master}"
+BRANCH="${1:-main}"
 DEPLOY_LOG="$APP_DIR/logs/deployments.log"
 STATE_DIR="$APP_DIR/state"
 ROLLBACK_FILE="$STATE_DIR/last_known_good_commit.txt"
@@ -81,7 +81,7 @@ fi
 
 # 7. Run Regression Test Suite
 echo "[+] Executing test suite in virtualenv..."
-if ! "$VENV_PYTEST" -v tests/; then
+if ! PYTHONPATH="$APP_DIR" "$VENV_PYTEST" -v tests/; then
     echo "[-] CRITICAL: Tests failed on incoming commit $TARGET_COMMIT!"
     echo "[!] Initiating immediate rollback to previous known-good commit: $PREV_COMMIT..."
     git reset --hard "$PREV_COMMIT"
