@@ -177,6 +177,7 @@ class AuditConfig:
     enable_hash_chain: bool = True
     audit_file: str = "logs/audit_trail.jsonl"
     api_log_file: str = "logs/api_requests.jsonl"
+    trade_log_file: str = "logs/trade_log.csv"
     max_log_bytes: int = 104857600
 
 
@@ -388,6 +389,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
             enable_hash_chain=bool(au.get("enable_hash_chain", True)),
             audit_file=str(au.get("audit_file", "logs/audit_trail.jsonl")),
             api_log_file=str(au.get("api_log_file", "logs/api_requests.jsonl")),
+            trade_log_file=str(au.get("trade_log_file", "logs/trade_log.csv")),
             max_log_bytes=int(au.get("max_log_bytes", 104857600)),
         )
 

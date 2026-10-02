@@ -107,6 +107,7 @@ audit:
   enable_hash_chain: true
   audit_file: "logs/audit_trail.jsonl"
   api_log_file: "logs/api_requests.jsonl"
+  trade_log_file: "logs/trade_log.csv"
   max_log_bytes: 104857600  # 100 MB
 
 web:

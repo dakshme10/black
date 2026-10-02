@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import copy
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 import logging
 import os
@@ -19,7 +19,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 
@@ -187,6 +187,17 @@ class WebServer:
             fills = [o.to_dict() for o in orders if o.filled_quantity > 0 or o.status.value == "FILLED"]
             return JSONResponse(fills)
 
+        @self.app.get("/api/trade-log.csv")
+        async def get_trade_log_csv():
+            trade_csv = getattr(getattr(self.bot, "logger", None), "trade_log_file", None)
+            if trade_csv and os.path.exists(trade_csv):
+                with open(trade_csv, "r", encoding="utf-8") as f:
+                    return PlainTextResponse(f.read(), media_type="text/csv")
+            return PlainTextResponse(
+                "timestamp_ist,timestamp_utc,event,symbol,side,order_type,quantity,price,filled_qty,filled_price,notional_usd,commission,client_order_id,exchange_order_id,status\n",
+                media_type="text/csv",
+            )
+
         @self.app.get("/api/audit-trail")
         async def get_audit_trail(limit: int = 50):
             records = []
@@ -319,8 +330,9 @@ class WebServer:
         Gathers complete real-time quantitative telemetry snapshot.
         Executed inside self._dash_executor so it never blocks the event loop or bot.
         """
-        now_utc = datetime.now(timezone.utc)
-        server_time_str = now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
+        ist = timezone(timedelta(hours=5, minutes=30))
+        now_ist = datetime.now(ist)
+        server_time_str = now_ist.strftime("%Y-%m-%d %H:%M:%S IST")
 
         # 1. Bot State & Configuration
         is_running = getattr(self.bot, "is_running", False)

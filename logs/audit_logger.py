@@ -6,6 +6,7 @@ to guarantee audit trail integrity, verification, and tamper detection.
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import logging
@@ -13,7 +14,7 @@ import os
 import sys
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -21,23 +22,28 @@ from typing import Any, Dict, Optional, Tuple
 class AuditLogger:
     """
     Append-only structured audit logger with sequence numbering and SHA-256 hash chaining.
+    Also maintains a dedicated CSV trade execution log (trade_log.csv).
     """
 
     def __init__(
         self,
         audit_file: str = "logs/audit_trail.jsonl",
         api_log_file: str = "logs/api_requests.jsonl",
+        trade_log_file: str = "logs/trade_log.csv",
         enable_hash_chain: bool = True,
         console_log_level: int = logging.INFO,
     ):
         self.audit_file = Path(audit_file)
         self.api_log_file = Path(api_log_file)
+        self.trade_log_file = Path(trade_log_file)
         self.enable_hash_chain = enable_hash_chain
         self._lock = threading.Lock()
 
         # Ensure directories exist
         self.audit_file.parent.mkdir(parents=True, exist_ok=True)
         self.api_log_file.parent.mkdir(parents=True, exist_ok=True)
+        self.trade_log_file.parent.mkdir(parents=True, exist_ok=True)
+        self._init_trade_csv()
 
         # Setup standard Python logger for console output
         self._console_logger = logging.getLogger("RoostooAudit")
@@ -79,6 +85,125 @@ class AuditLogger:
             self._console_logger.warning(f"Could not read existing audit trail for hash chain resume: {e}")
             self._seq = 0
             self._last_hash = "0" * 64
+
+    def _init_trade_csv(self) -> None:
+        """Initialize trade_log.csv with standardized header and backfill historical fills from audit trail."""
+        needs_header = not self.trade_log_file.exists() or self.trade_log_file.stat().st_size == 0
+        if needs_header:
+            header = [
+                "timestamp_ist",
+                "timestamp_utc",
+                "event",
+                "symbol",
+                "side",
+                "order_type",
+                "quantity",
+                "price",
+                "filled_qty",
+                "filled_price",
+                "notional_usd",
+                "commission",
+                "client_order_id",
+                "exchange_order_id",
+                "status",
+            ]
+            try:
+                with open(self.trade_log_file, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(header)
+
+                # Backfill historical fills from audit trail if available
+                if self.audit_file.exists():
+                    ist = timezone(timedelta(hours=5, minutes=30))
+                    with open(self.audit_file, "r", encoding="utf-8") as af, open(self.trade_log_file, "a", newline="", encoding="utf-8") as tf:
+                        writer = csv.writer(tf)
+                        for line in af:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                rec = json.loads(line)
+                                if rec.get("record_type") == "ORDER_EVENT":
+                                    filled_qty = float(rec.get("filled_qty", 0.0) or 0.0)
+                                    status = str(rec.get("status", ""))
+                                    event = str(rec.get("event", ""))
+                                    if filled_qty > 0 or status in ("FILLED", "PARTIALLY_FILLED") or "FILL" in event:
+                                        ts_iso = rec.get("timestamp_iso", "")
+                                        dt = datetime.fromisoformat(ts_iso) if ts_iso else datetime.now(timezone.utc)
+                                        ts_ist = dt.astimezone(ist).strftime("%Y-%m-%d %H:%M:%S IST")
+                                        ts_utc = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+                                        px = float(rec.get("filled_price", 0.0) or rec.get("price", 0.0) or 0.0)
+                                        qty = filled_qty if filled_qty > 0 else float(rec.get("quantity", 0.0) or 0.0)
+                                        notional = round(px * qty, 4)
+                                        writer.writerow([
+                                            ts_ist,
+                                            ts_utc,
+                                            event,
+                                            rec.get("symbol", ""),
+                                            rec.get("side", ""),
+                                            rec.get("order_type", ""),
+                                            rec.get("quantity", ""),
+                                            rec.get("price", ""),
+                                            filled_qty,
+                                            px,
+                                            notional,
+                                            rec.get("commission", 0.0),
+                                            rec.get("client_order_id", ""),
+                                            rec.get("exchange_order_id", ""),
+                                            status,
+                                        ])
+                            except Exception:
+                                continue
+            except Exception as e:
+                self._console_logger.error(f"Error initializing trade_log.csv: {e}")
+
+    def _append_trade_csv(
+        self,
+        event: str,
+        symbol: str,
+        side: str,
+        order_type: str,
+        quantity: float,
+        price: Optional[float],
+        filled_qty: float,
+        filled_price: float,
+        commission: float,
+        client_order_id: str,
+        exchange_order_id: Optional[int],
+        status: str,
+    ) -> None:
+        """Append executed trade or fill event to trade_log.csv with IST timestamp."""
+        try:
+            ist = timezone(timedelta(hours=5, minutes=30))
+            now = datetime.now(timezone.utc)
+            now_ist_str = now.astimezone(ist).strftime("%Y-%m-%d %H:%M:%S IST")
+            now_utc_str = now.strftime("%Y-%m-%d %H:%M:%S UTC")
+            px = filled_price if filled_price > 0 else (price or 0.0)
+            qty = filled_qty if filled_qty > 0 else quantity
+            notional = round(px * qty, 4)
+
+            row = [
+                now_ist_str,
+                now_utc_str,
+                event,
+                symbol,
+                side,
+                order_type,
+                str(quantity),
+                str(price or 0.0),
+                str(filled_qty),
+                str(filled_price),
+                str(notional),
+                str(commission),
+                client_order_id,
+                str(exchange_order_id or ""),
+                status,
+            ]
+            with open(self.trade_log_file, "a", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(row)
+        except Exception as e:
+            self._console_logger.error(f"Failed to append to trade_log.csv: {e}")
 
     def _compute_hash(self, record: Dict[str, Any]) -> str:
         """Compute SHA-256 hash of a canonicalized JSON string without curr_hash."""
@@ -231,6 +356,24 @@ class AuditLogger:
             f"ORDER {event} [{side} {symbol}] qty={quantity} px={price} "
             f"status={status} id={exchange_order_id or client_order_id}"
         )
+
+        # Record fill / execution to trade_log.csv
+        if filled_qty > 0 or status in ("FILLED", "PARTIALLY_FILLED") or "FILL" in event:
+            self._append_trade_csv(
+                event=event,
+                symbol=symbol,
+                side=side,
+                order_type=order_type,
+                quantity=quantity,
+                price=price,
+                filled_qty=filled_qty,
+                filled_price=filled_price,
+                commission=commission,
+                client_order_id=client_order_id,
+                exchange_order_id=exchange_order_id,
+                status=status,
+            )
+
         return rec
 
     def log_api_request(

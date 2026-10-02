@@ -11,7 +11,7 @@ import os
 import signal
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
@@ -52,6 +52,7 @@ class RoostooAutonomousBot:
         self.logger = AuditLogger(
             audit_file=config.audit.audit_file,
             api_log_file=config.audit.api_log_file,
+            trade_log_file=config.audit.trade_log_file,
             enable_hash_chain=config.audit.enable_hash_chain,
         )
 
@@ -291,7 +292,8 @@ class RoostooAutonomousBot:
 
         # 1. Update Market Data
         tickers = self.market_data.update_ticker()
-        self.last_market_update = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+        ist = timezone(timedelta(hours=5, minutes=30))
+        self.last_market_update = datetime.now(ist).strftime("%H:%M:%S IST")
         self.last_api_request = f"/v3/ticker @ {self.last_market_update}"
 
         # 2. Update mark prices in portfolio ledger

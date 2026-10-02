@@ -763,7 +763,7 @@
                     <span>🛡️</span>
                     <span id="audit-text">SHA-256 CHAIN: VERIFIED</span>
                 </span>
-                <span class="pill pill-purple mono" id="server-time">--:--:-- UTC</span>
+                <span class="pill pill-purple mono" id="server-time">--:--:-- IST</span>
             </div>
 
             <!-- Command Controls -->
@@ -994,8 +994,13 @@
                     <div class="table-title">
                         <span>📝</span> Exchange Order Execution Ledger
                     </div>
-                    <div class="mono" style="font-size:11px; color:var(--text-dim);" id="orders-count-label">
-                        Showing recent orders
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <a href="/api/trade-log.csv" download="trade_log.csv" class="btn btn-accent" style="padding:4px 10px; font-size:11px; text-decoration:none;">
+                            📥 Export trade_log.csv
+                        </a>
+                        <span class="mono" style="font-size:11px; color:var(--text-dim);" id="orders-count-label">
+                            Showing recent orders
+                        </span>
                     </div>
                 </div>
                 <table>
@@ -1449,7 +1454,10 @@
 
             // 1. Clock & Mode
             if (data.server_time) {
-                document.getElementById('server-time').innerText = data.server_time.split(' ')[1] + ' UTC';
+                const parts = data.server_time.split(' ');
+                const timeStr = parts.length > 1 ? parts[1] : data.server_time;
+                const tzStr = parts.length > 2 ? parts[2] : 'IST';
+                document.getElementById('server-time').innerText = `${timeStr} ${tzStr}`;
                 document.getElementById('ft-last-update').innerText = data.server_time;
             }
 

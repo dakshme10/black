@@ -69,6 +69,7 @@ data/*.trigger
 data/*.lock
 logs/*.log
 logs/*.jsonl
+logs/*.csv
 !logs/audit_logger.py
 
 # Docker local volumes
