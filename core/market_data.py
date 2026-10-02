@@ -307,7 +307,7 @@ class MarketDataManager:
 
         self._bootstrapped[pair] = True
         now_ms = snap.server_time if snap.server_time > 0 else int(time.time() * 1000)
-        num_candles = 40  # Enough to satisfy warmup (30) + lookback margin
+        num_candles = 80  # Satisfies ValueArea lookback (72) + warmup (15-30) + indicators
 
         # Estimate per-candle volume from 24h volume (288 five-minute candles per day)
         daily_vol = snap.coin_volume_24h if snap.coin_volume_24h > 0 else 100.0

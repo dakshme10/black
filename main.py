@@ -802,7 +802,7 @@ class RoostooAutonomousBot:
                 )
                 regime_name = regime_info.regime.value
                 adx_val = regime_info.adx
-                atr_val = regime_info.atr
+                atr_val = regime_info.atr if regime_info.atr > 0 else (float(regime_info.metrics.get("atr_pct", 0.005)) * last_px)
                 trend_dir = regime_info.trend_direction
                 vol_pctile = regime_info.volatility_percentile
             else:

@@ -32,6 +32,18 @@ class RegimeClassification:
     metrics: Dict[str, float] = field(default_factory=dict)
     favored_strategies: List[str] = field(default_factory=list)
 
+    @property
+    def adx(self) -> float:
+        return float(self.metrics.get("adx", 0.0))
+
+    @property
+    def atr(self) -> float:
+        return float(self.metrics.get("atr", 0.0))
+
+    @property
+    def volatility_percentile(self) -> float:
+        return float(self.metrics.get("volatility_percentile", self.metrics.get("realized_vol", 0.0) * 100.0))
+
 
 class RegimeDetector:
     """
@@ -94,6 +106,7 @@ class RegimeDetector:
             "plus_di": round(plus_di, 2),
             "minus_di": round(minus_di, 2),
             "realized_vol": round(realized_vol, 4),
+            "atr": round(curr_atr, 2),
             "atr_pct": round(atr_pct, 4),
             "vol_ratio": round(vol_ratio, 2),
             "vwap_dist_pct": round(vwap_dist_pct, 4),
