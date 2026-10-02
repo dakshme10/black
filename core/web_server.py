@@ -244,7 +244,6 @@ class WebServer:
                 "strategies": {
                     "value_area": self.bot.config.strategies.value_area.enabled,
                     "liquidity_sweep": self.bot.config.strategies.liquidity_sweep.enabled,
-                    "cvd_absorption": self.bot.config.strategies.cvd_absorption.enabled,
                 }
             }
             return JSONResponse(cfg_dict)

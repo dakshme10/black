@@ -375,7 +375,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
                 tp1_r_multiple=float(ls_raw.get("tp1_r_multiple", 2.0)),
             ),
             cvd_absorption=CvdAbsorptionConfig(
-                enabled=bool(cvd_raw.get("enabled", True)),
+                enabled=bool(cvd_raw.get("enabled", False)),
                 delta_period=int(cvd_raw.get("delta_period", 14)),
                 divergence_window=int(cvd_raw.get("divergence_window", 5)),
                 require_vwap_reclaim=bool(cvd_raw.get("require_vwap_reclaim", True)),
