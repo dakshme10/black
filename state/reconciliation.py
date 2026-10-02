@@ -72,7 +72,7 @@ class ReconciliationEngine:
                 if not bal_resp.get("Success", False):
                     raise RuntimeError(f"Failed to fetch exchange balance: {bal_resp.get('ErrMsg')}")
 
-                wallet = bal_resp.get("Wallet", {})
+                wallet = bal_resp.get("SpotWallet") or bal_resp.get("Wallet") or {}
                 ex_usd_free = float(wallet.get("USD", {}).get("Free", 0.0))
                 ex_usd_lock = float(wallet.get("USD", {}).get("Lock", 0.0))
 
