@@ -216,6 +216,7 @@ def test_confluence_failsafe_first_candle_skipped(exit_engine, long_position):
         current_candle_vol=50.0,
         prev_completed_vol=50.0,
         prev_prev_completed_vol=100.0,
+        current_time=pos.entry_time,
     )
     assert reason is None
     assert pos.status == "OPEN"

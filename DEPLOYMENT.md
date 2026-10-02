@@ -74,7 +74,7 @@ If you prefer doing each step manually:
 #### On AWS EC2:
 1. Connect to EC2 via SSH:
    ```powershell
-   ssh aws-shoonya
+   ssh aws-btceth
    ```
 2. Run the safe deployment script:
    ```bash

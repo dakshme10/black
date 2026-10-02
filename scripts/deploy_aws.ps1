@@ -61,7 +61,7 @@ Write-Host "[+] Pushed to GitHub successfully." -ForegroundColor Green
 # 4. Trigger AWS Remote Deployment
 Write-Host "`n[+] Step 3/3: Triggering automated remote deployment pipeline on AWS EC2..." -ForegroundColor Cyan
 $remoteCmd = "bash /home/ubuntu/autosl/scripts/deploy_aws.sh $Branch"
-ssh -o BatchMode=yes aws-shoonya $remoteCmd
+ssh -o BatchMode=yes aws-btceth $remoteCmd
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[-] AWS deployment encountered an error! Check logs above." -ForegroundColor Red
