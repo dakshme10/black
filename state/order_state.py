@@ -13,7 +13,32 @@ import os
 from pathlib import Path
 import threading
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
+
+
+@dataclass
+class SymbolLockStatus:
+    is_locked: bool
+    reason: str = ""
+
+    def __bool__(self) -> bool:
+        return self.is_locked
+
+    def __iter__(self):
+        yield self.is_locked
+        yield self.reason
+
+    def __getitem__(self, index):
+        return (self.is_locked, self.reason)[index]
+
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, bool):
+            return self.is_locked == other
+        if isinstance(other, tuple) and len(other) == 2:
+            return (self.is_locked, self.reason) == other
+        if isinstance(other, SymbolLockStatus):
+            return self.is_locked == other.is_locked and self.reason == other.reason
+        return False
 
 
 class OrderStatus(str, Enum):
@@ -23,7 +48,8 @@ class OrderStatus(str, Enum):
     PARTIALLY_FILLED = "PARTIALLY_FILLED"
     CANCELED = "CANCELED"
     REJECTED = "REJECTED"
-    UNKNOWN = "UNKNOWN"  # Ambiguous network timeout state
+    UNKNOWN = "UNKNOWN"      # Ambiguous network timeout state
+    RESOLVING = "RESOLVING"  # Currently undergoing exchange reconciliation query
 
 
 @dataclass
@@ -36,6 +62,10 @@ class Order:
     price: Optional[float] = None
     exchange_order_id: Optional[int] = None
     filled_quantity: float = 0.0
+    cumulative_filled_quantity: float = 0.0
+    remaining_quantity: float = 0.0
+    last_fill_quantity: float = 0.0
+    last_fill_timestamp: Optional[int] = None
     filled_avg_price: float = 0.0
     status: OrderStatus = OrderStatus.PENDING_SUBMIT
     role: str = ""                       # "MAKER", "TAKER"
@@ -48,6 +78,20 @@ class Order:
     create_timestamp: int = field(default_factory=lambda: int(time.time() * 1000))
     finish_timestamp: Optional[int] = None
     error_message: str = ""
+
+    def __post_init__(self) -> None:
+        if self.remaining_quantity <= 0.0 and self.quantity > 0.0 and self.cumulative_filled_quantity == 0.0:
+            self.remaining_quantity = self.quantity
+        if self.cumulative_filled_quantity == 0.0 and self.filled_quantity > 0.0:
+            self.cumulative_filled_quantity = self.filled_quantity
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.status in (OrderStatus.FILLED, OrderStatus.CANCELED, OrderStatus.REJECTED)
+
+    @property
+    def is_active(self) -> bool:
+        return not self.is_terminal
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -70,13 +114,54 @@ class OrderStateManager:
     def __init__(self, persistence_file: str = "data/order_state.json"):
         self.persistence_file = Path(persistence_file)
         self.persistence_file.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
         # In-memory indices
         self._orders_by_client_id: Dict[str, Order] = {}
         self._orders_by_exchange_id: Dict[int, Order] = {}
+        self._symbol_locks: Dict[str, Tuple[float, str]] = {}  # symbol -> (expire_ts, reason)
 
         self.load_from_disk()
+
+    def lock_symbol(self, symbol: str, reason: str, ttl_seconds: float = 300.0) -> None:
+        """Lock symbol from fresh entry orders."""
+        with self._lock:
+            expire_ts = time.time() + ttl_seconds
+            self._symbol_locks[symbol] = (expire_ts, reason)
+
+    def unlock_symbol(self, symbol: str) -> None:
+        """Clear symbol entry lock."""
+        with self._lock:
+            self._symbol_locks.pop(symbol, None)
+
+    def is_symbol_entry_locked(self, symbol: str) -> SymbolLockStatus:
+        """
+        Determine if symbol is locked from placing new entry orders.
+        A symbol is locked if:
+        1. An explicit lock is active (e.g. UNKNOWN order undergoing reconciliation).
+        2. Any active BUY order is PENDING_SUBMIT, PENDING_EXCHANGE, PARTIALLY_FILLED, UNKNOWN, or RESOLVING.
+        """
+        with self._lock:
+            now = time.time()
+            if symbol in self._symbol_locks:
+                exp_ts, reason = self._symbol_locks[symbol]
+                if now < exp_ts:
+                    return SymbolLockStatus(True, f"Symbol entry locked: {reason}")
+                else:
+                    del self._symbol_locks[symbol]
+
+            for ord in self._orders_by_client_id.values():
+                if ord.symbol == symbol and ord.side.upper() == "BUY":
+                    if ord.status in (
+                        OrderStatus.PENDING_SUBMIT,
+                        OrderStatus.PENDING_EXCHANGE,
+                        OrderStatus.PARTIALLY_FILLED,
+                        OrderStatus.UNKNOWN,
+                        OrderStatus.RESOLVING,
+                    ):
+                        return SymbolLockStatus(True, f"Active entry order {ord.client_order_id} in state {ord.status.value}")
+
+            return SymbolLockStatus(False, "")
 
     def generate_client_order_id(self, strategy: str, symbol: str) -> str:
         """
@@ -95,6 +180,86 @@ class OrderStateManager:
             if order.exchange_order_id is not None:
                 self._orders_by_exchange_id[order.exchange_order_id] = order
             self._persist()
+
+    def create_order(
+        self,
+        client_order_id: str,
+        symbol: str,
+        side: str,
+        quantity: float,
+        price: float = 0.0,
+        order_type: str = "MARKET",
+        strategy: str = "",
+        status: OrderStatus = OrderStatus.PENDING_SUBMIT,
+    ) -> Order:
+        """Create, register, and persist a new order."""
+        order = Order(
+            client_order_id=client_order_id,
+            symbol=symbol,
+            side=side,
+            order_type=order_type,
+            quantity=quantity,
+            price=price,
+            strategy=strategy,
+            status=status,
+            create_timestamp=int(time.time() * 1000),
+        )
+        self.register_order(order)
+        return order
+
+    def record_fill_delta(
+        self,
+        client_order_id: str,
+        exchange_cumulative_filled: float,
+        filled_price: float = 0.0,
+        commission: float = 0.0,
+        role: str = "",
+        ex_status: str = "",
+        exchange_order_id: Optional[int] = None,
+        price: Optional[float] = None,
+    ) -> Tuple[float, Optional[Order]]:
+        """
+        Incremental fill accounting:
+        Calculates new_fill = exchange_cumulative_filled - locally_recorded_cumulative_filled.
+        Guarantees that repeated polls of the same fill never double-count.
+        """
+        actual_price = price if price is not None else filled_price
+        with self._lock:
+            order = self._orders_by_client_id.get(client_order_id)
+            if not order:
+                return 0.0, None
+
+            # Calculate non-negative incremental fill
+            fill_delta = max(0.0, float(exchange_cumulative_filled) - float(order.cumulative_filled_quantity))
+            order.cumulative_filled_quantity = float(exchange_cumulative_filled)
+            order.filled_quantity = float(exchange_cumulative_filled)
+            order.remaining_quantity = max(0.0, float(order.quantity) - float(order.cumulative_filled_quantity))
+            order.last_fill_quantity = fill_delta
+            order.last_fill_timestamp = int(time.time() * 1000)
+
+            if actual_price > 0:
+                order.filled_avg_price = actual_price
+            if commission > 0:
+                order.commission = commission
+            if role:
+                order.role = role
+            if exchange_order_id is not None:
+                order.exchange_order_id = exchange_order_id
+                self._orders_by_exchange_id[exchange_order_id] = order
+
+            ex_status_upper = ex_status.upper() if ex_status else ""
+            if ex_status_upper == "FILLED" or order.remaining_quantity <= 1e-7:
+                order.status = OrderStatus.FILLED
+                order.finish_timestamp = int(time.time() * 1000)
+            elif ex_status_upper in ("PARTIALLY_FILLED", "PENDING") or order.cumulative_filled_quantity > 0:
+                order.status = OrderStatus.PARTIALLY_FILLED
+            elif ex_status_upper == "CANCELED":
+                order.status = OrderStatus.CANCELED
+            elif ex_status_upper == "REJECTED":
+                order.status = OrderStatus.REJECTED
+
+            self._persist()
+            return fill_delta, order
 
     def update_order(
         self,
@@ -121,6 +286,9 @@ class OrderStateManager:
                 self._orders_by_exchange_id[exchange_order_id] = order
             if filled_qty is not None:
                 order.filled_quantity = filled_qty
+                if order.cumulative_filled_quantity < filled_qty:
+                    order.cumulative_filled_quantity = filled_qty
+                order.remaining_quantity = max(0.0, order.quantity - order.cumulative_filled_quantity)
             if filled_price is not None:
                 order.filled_avg_price = filled_price
             if role is not None:
@@ -148,7 +316,13 @@ class OrderStateManager:
         with self._lock:
             active = []
             for o in self._orders_by_client_id.values():
-                if o.status in (OrderStatus.PENDING_SUBMIT, OrderStatus.PENDING_EXCHANGE, OrderStatus.UNKNOWN):
+                if o.status in (
+                    OrderStatus.PENDING_SUBMIT,
+                    OrderStatus.PENDING_EXCHANGE,
+                    OrderStatus.PARTIALLY_FILLED,
+                    OrderStatus.UNKNOWN,
+                    OrderStatus.RESOLVING,
+                ):
                     if symbol is None or o.symbol == symbol:
                         active.append(o)
             return active

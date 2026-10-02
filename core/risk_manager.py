@@ -24,12 +24,12 @@ class RiskDecision:
     approved: bool
     adjusted_quantity: float
     adjusted_price: float
-    stop_loss: float
-    take_profit_1: float
-    take_profit_2: float
-    risk_capital: float
-    risk_pct: float
-    reason: str
+    stop_loss: float = 0.0
+    take_profit_1: float = 0.0
+    take_profit_2: float = 0.0
+    risk_capital: float = 0.0
+    risk_pct: float = 0.0
+    reason: str = ""
     circuit_breaker_active: bool = False
 
 
@@ -48,6 +48,7 @@ class RiskManager:
         min_cash_reserve_pct: float = 0.05,
         max_open_positions: int = 2,
         audit_logger: Optional[AuditLogger] = None,
+        order_manager: Optional[Any] = None,
     ):
         self.portfolio = portfolio
         self.risk_config = risk_config or RiskControlsConfig()
@@ -57,6 +58,7 @@ class RiskManager:
         self.min_cash_reserve_pct = min_cash_reserve_pct
         self.max_open_positions = max_open_positions
         self.audit_logger = audit_logger
+        self.order_manager = order_manager
 
         # Circuit breaker states
         self.permanent_kill_switch: bool = False
@@ -142,10 +144,24 @@ class RiskManager:
                 circuit_breaker_active=True,
             )
 
-        # De-risk signals are always approved to facilitate capital preservation
+        # De-risk signals are approved to facilitate capital preservation and partial scaling (e.g. TP1)
         if signal.direction == "DE_RISK":
             current_pos = self.portfolio.positions.get(signal.symbol)
-            qty = current_pos.quantity if current_pos else 0.0
+            if not current_pos or current_pos.quantity <= 1e-7:
+                return RiskDecision(
+                    approved=False,
+                    adjusted_quantity=0.0,
+                    adjusted_price=signal.entry_price,
+                    reason=f"Rejected: No active position to de-risk for {signal.symbol}",
+                )
+
+            # Check if this is a partial exit (e.g. TP1 at 50%)
+            exit_ratio = float(signal.metadata.get("exit_ratio", 1.0))
+            if 0.0 < exit_ratio < 1.0:
+                qty = current_pos.quantity * exit_ratio
+            else:
+                qty = current_pos.quantity
+
             return RiskDecision(
                 approved=True,
                 adjusted_quantity=qty,
@@ -155,7 +171,7 @@ class RiskManager:
                 take_profit_2=0.0,
                 risk_capital=0.0,
                 risk_pct=0.0,
-                reason="De-risk signal approved for capital preservation",
+                reason=f"De-risk signal approved ({exit_ratio * 100:.0f}% exit)",
             )
 
         # Signal must be a BUY
@@ -172,8 +188,31 @@ class RiskManager:
                 reason=f"Rejected: Direction '{signal.direction}' not actionable",
             )
 
-        # Max open positions check
-        if len(self.portfolio.positions) >= self.max_open_positions and signal.symbol not in self.portfolio.positions:
+        # Multi-layer duplicate entry protection (Section 3)
+        # Check A: Reject if symbol already has an open position
+        existing_pos = self.portfolio.positions.get(signal.symbol)
+        if existing_pos and existing_pos.quantity > 1e-7:
+            return RiskDecision(
+                approved=False,
+                adjusted_quantity=0.0,
+                adjusted_price=0.0,
+                reason=f"DUPLICATE_ENTRY_REJECTED: Existing position active ({existing_pos.quantity} {existing_pos.base_coin}) for {signal.symbol}",
+            )
+
+        # Check B: Reject if symbol has an active pending, submitting, or UNKNOWN order
+        if getattr(self, "order_manager", None):
+            is_locked, lock_reason = self.order_manager.is_symbol_entry_locked(signal.symbol)
+            if is_locked:
+                return RiskDecision(
+                    approved=False,
+                    adjusted_quantity=0.0,
+                    adjusted_price=0.0,
+                    reason=f"Rejected: {lock_reason}",
+                )
+
+        # Max open positions check across portfolio
+        active_pos_count = len([p for p in self.portfolio.positions.values() if p.quantity > 1e-7])
+        if active_pos_count >= self.max_open_positions:
             return RiskDecision(
                 approved=False,
                 adjusted_quantity=0.0,

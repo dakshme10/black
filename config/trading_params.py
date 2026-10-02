@@ -41,6 +41,10 @@ class RiskControlsConfig:
     freeze_duration_hours: float = 6.0
     max_drawdown_limit: float = 0.06
     enforce_circuit_breakers: bool = True
+    reconciliation_interval_seconds: float = 60.0
+    emergency_recovery_sl_pct: float = 0.02
+    entry_cooldown_seconds: float = 300.0
+    candle_warmup_candles: int = 30
 
 
 @dataclass
@@ -274,6 +278,10 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
             freeze_duration_hours=float(rc.get("freeze_duration_hours", app_cfg.risk_controls.freeze_duration_hours)),
             max_drawdown_limit=float(rc.get("max_drawdown_limit", app_cfg.risk_controls.max_drawdown_limit)),
             enforce_circuit_breakers=bool(rc.get("enforce_circuit_breakers", app_cfg.risk_controls.enforce_circuit_breakers)),
+            reconciliation_interval_seconds=float(rc.get("reconciliation_interval_seconds", app_cfg.risk_controls.reconciliation_interval_seconds)),
+            emergency_recovery_sl_pct=float(rc.get("emergency_recovery_sl_pct", app_cfg.risk_controls.emergency_recovery_sl_pct)),
+            entry_cooldown_seconds=float(rc.get("entry_cooldown_seconds", app_cfg.risk_controls.entry_cooldown_seconds)),
+            candle_warmup_candles=int(rc.get("candle_warmup_candles", app_cfg.risk_controls.candle_warmup_candles)),
         )
 
     # Populate fees

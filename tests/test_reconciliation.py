@@ -3,6 +3,7 @@ Unit tests for Exchange Reconciliation Engine.
 Covers startup reconciliation, balance alignment to exchange truth, and UNKNOWN state recovery.
 """
 
+import os
 import pytest
 import time
 from unittest.mock import MagicMock
@@ -11,6 +12,31 @@ from core.api_client import RoostooClient
 from state.order_state import Order, OrderStateManager, OrderStatus
 from state.portfolio_tracker import PortfolioTracker
 from state.reconciliation import ReconciliationEngine
+
+
+@pytest.fixture(autouse=True)
+def cleanup_test_files():
+    files = [
+        "data/test_rec_port1.json",
+        "data/test_rec_ord1.json",
+        "data/test_rec_port2.json",
+        "data/test_rec_ord2.json",
+        "data/test_rec_port3.json",
+        "data/test_rec_ord3.json",
+    ]
+    for f in files:
+        if os.path.exists(f):
+            try:
+                os.remove(f)
+            except Exception:
+                pass
+    yield
+    for f in files:
+        if os.path.exists(f):
+            try:
+                os.remove(f)
+            except Exception:
+                pass
 
 
 def test_reconciliation_perfect_match():

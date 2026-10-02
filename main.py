@@ -92,6 +92,7 @@ class RoostooAutonomousBot:
             max_gross_exposure_pct=config.portfolio.max_gross_exposure_pct,
             min_cash_reserve_pct=config.portfolio.min_cash_reserve_pct,
             max_open_positions=config.portfolio.max_open_positions,
+            order_manager=self.order_manager,
             audit_logger=self.logger,
         )
         self.executor = OrderExecutor(
@@ -113,7 +114,13 @@ class RoostooAutonomousBot:
             portfolio_tracker=self.portfolio,
             order_manager=self.order_manager,
             audit_logger=self.logger,
+            emergency_recovery_sl_pct=getattr(config.risk_controls, "emergency_recovery_sl_pct", 0.02),
         )
+
+        # Signal Deduplication Cache & Periodic Timers (Section 3C, 3D, 8)
+        self._processed_signals: set = set()
+        self._last_signal_cleanup: float = time.time()
+        self._last_periodic_recon: float = time.time()
 
         # Observability state variables
         self.last_market_update: str = "N/A"
@@ -262,6 +269,18 @@ class RoostooAutonomousBot:
         """
         Execute one complete autonomous decision cycle.
         """
+        # 0. Periodic Reconciliation against exchange truth (Section 8)
+        now_ts = time.time()
+        recon_interval = getattr(self.config.risk_controls, "reconciliation_interval_seconds", 60.0)
+        if not self.config.dry_run and (now_ts - self._last_periodic_recon >= recon_interval):
+            self._last_periodic_recon = now_ts
+            try:
+                recon_report = self.reconciliation.reconcile()
+                if not recon_report.is_synchronized:
+                    self.logger.log_system_event("PERIODIC_RECON_DESYNC", f"Reconciliation detected desync: {recon_report.actions_taken}")
+            except Exception as recon_err:
+                self.logger.log_system_event("PERIODIC_RECON_ERROR", f"Periodic reconciliation failed: {recon_err}")
+
         # 1. Update Market Data
         tickers = self.market_data.update_ticker()
         self.last_market_update = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
@@ -334,7 +353,8 @@ class RoostooAutonomousBot:
             cp = pos.to_crypto_position()
             prev_broker_sl = cp.broker_sl_price
 
-            # Evaluate tick through AutoSL Exit Engine
+            # Evaluate tick through AutoSL Exit Engine (with stale data guard)
+            is_stale = self.market_data.is_stale(sym)
             exit_reason, trigger_px = self.autosl_engine.on_tick(
                 pos=cp,
                 current_price=curr_px,
@@ -345,6 +365,7 @@ class RoostooAutonomousBot:
                 recent_market_low=recent_low,
                 current_time=datetime.now(timezone.utc),
                 tick_size=tick_sz,
+                is_stale_data=is_stale,
             )
 
             # Sync updated state back into portfolio tracker position
@@ -357,8 +378,12 @@ class RoostooAutonomousBot:
             # Process exit signal if triggered
             if exit_reason:
                 trigger_price_val = trigger_px or curr_px
-                # Calculate loss savings if FAILED_BREAKOUT_EXIT
-                extra_details: Dict[str, Any] = {"exit_reason": exit_reason, "price": trigger_price_val}
+                exit_ratio = 0.5 if exit_reason == "TP1_HIT" else 1.0
+                extra_details: Dict[str, Any] = {
+                    "exit_reason": exit_reason,
+                    "price": trigger_price_val,
+                    "exit_ratio": exit_ratio,
+                }
                 if exit_reason == "FAILED_BREAKOUT_EXIT":
                     full_sl = pos.initial_stop_loss or (pos.entry_price * 0.98 if pos.side == "BUY" else pos.entry_price * 1.02)
                     full_sl_loss = abs((pos.entry_price - full_sl) / pos.entry_price * 100.0) if pos.entry_price > 0 else 2.0
@@ -420,8 +445,18 @@ class RoostooAutonomousBot:
             if self.market_data.is_stale(symbol):
                 continue
 
+            # Check existing position protection (Section 3A)
+            if symbol in self.portfolio.positions and self.portfolio.positions[symbol].quantity > 1e-7:
+                continue
+
+            # Check pending order / UNKNOWN entry lock (Section 3B)
+            if self.order_manager.is_symbol_entry_locked(symbol):
+                continue
+
+            # Historical candle warm-up requirement (Section 16)
+            warmup_req = getattr(self.config.risk_controls, "candle_warmup_candles", 30)
             df_5m = self.market_data.get_candle_df(symbol, timeframe="5m", limit=100)
-            if len(df_5m) < 10:
+            if len(df_5m) < warmup_req:
                 # If running live with empty buffer, synthesize pseudo candles from ticker
                 snap = tickers.get(symbol)
                 if snap:
@@ -439,6 +474,15 @@ class RoostooAutonomousBot:
             )
 
             if signal.direction != "NO_TRADE":
+                # Candle-level signal deduplication (Section 3C)
+                candle_ts = int(df_5m["timestamp"].iloc[-1]) if "timestamp" in df_5m.columns else int(time.time() / 300) * 300
+                sig_key = f"{symbol}_{candle_ts}_{signal.direction}"
+                if sig_key in self._processed_signals:
+                    continue
+                self._processed_signals.add(sig_key)
+                if time.time() - self._last_signal_cleanup > 3600:
+                    self._processed_signals.clear()
+                    self._last_signal_cleanup = time.time()
                 self.last_signal = f"{signal.direction} {symbol} via {signal.strategy} (conf={signal.confidence:.2f})"
                 self.active_strategy = signal.strategy
                 self.signal_history.append({
@@ -715,24 +759,14 @@ class RoostooAutonomousBot:
                 vol_sum = df_5m["volume"].sum()
                 session_vwap = float((typical_price * df_5m["volume"]).sum() / vol_sum) if vol_sum > 0 else last_px
 
-                # Swings
-                swing_highs, swing_lows = FeatureEngine.detect_fractal_swings(df_5m, lookback=5)
-                sh_series = swing_highs.dropna()
-                sl_series = swing_lows.dropna()
-                latest_sh = float(sh_series.iloc[-1]) if len(sh_series) > 0 else (last_px * 1.01)
-                latest_sl = float(sl_series.iloc[-1]) if len(sl_series) > 0 else (last_px * 0.99)
-
-                # Displacement & FVG
-                disp = FeatureEngine.detect_displacement_candles(df_5m, factor=1.2)
-                is_displacement = bool(disp.iloc[-1]) if len(disp) > 0 else False
-                fvgs = FeatureEngine.detect_fair_value_gaps(df_5m)
-                has_fvg = bool((fvgs["bullish_fvg"] | fvgs["bearish_fvg"]).iloc[-1]) if len(fvgs) > 0 else False
-
-                # Delta & CVD
-                delta = FeatureEngine.estimate_volume_delta(df_5m)
-                cvd = FeatureEngine.calculate_cvd(delta)
-                latest_delta = float(delta.iloc[-1]) if len(delta) > 0 else 0.0
-                latest_cvd = float(cvd.iloc[-1]) if len(cvd) > 0 else 0.0
+                # Market Structure (Swings, Displacement, FVG)
+                ms = FeatureEngine.detect_market_structure(df_5m)
+                latest_sh = ms.last_swing_high.price if ms.last_swing_high else (last_px * 1.01)
+                latest_sl = ms.last_swing_low.price if ms.last_swing_low else (last_px * 0.99)
+                is_displacement = bool(ms.sweep_detected or ms.bullish_mss_confirmed or ms.bearish_mss_confirmed)
+                has_fvg = len(ms.active_fvgs) > 0
+                latest_delta = 0.0
+                latest_cvd = 0.0
 
                 # Strategy evaluations
                 fees_pct = self.config.fees.taker_fee_pct + self.config.fees.slippage_pct

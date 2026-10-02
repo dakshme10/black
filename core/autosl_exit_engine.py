@@ -53,7 +53,11 @@ class CryptoPosition:
     initial_stop_loss: float = 0.0
     stop_loss_price: float = 0.0
     take_profit_price: float = 0.0
-    broker_sl_price: float = 0.0  # Hard stop on exchange
+    take_profit_1: float = 0.0
+    take_profit_1_hit: bool = False
+    take_profit_2: float = 0.0
+    take_profit_2_hit: bool = False
+    broker_sl_price: float = 0.0  # Software synthetic stop (Roostoo lacks native stops)
     sl_percent: float = 2.0       # Current dynamic SL %
 
     # State Tracking
@@ -217,6 +221,7 @@ class AutoSLExitEngine:
         recent_market_low: float = 0.0,
         current_time: Optional[datetime] = None,
         tick_size: Optional[float] = None,
+        is_stale_data: bool = False,
     ) -> Tuple[Optional[str], Optional[float]]:
         """
         Processes a new market tick for an open position.
@@ -235,26 +240,57 @@ class AutoSLExitEngine:
 
             effective_tick = tick_size or self.config.get("tick_size", 0.1)
 
-            # 1. Update High-Water Mark (Peak Price) & Profit
+            # 1. Update High-Water Mark (Peak Price) & Profit (Skip updating peak if data is stale)
+            if not is_stale_data:
+                if pos.is_long:
+                    pos.peak_price = max(pos.peak_price, current_price)
+                else:
+                    pos.peak_price = min(pos.peak_price, current_price) if pos.peak_price > 0 else current_price
+
             if pos.is_long:
-                pos.peak_price = max(pos.peak_price, current_price)
                 profit_points = pos.peak_price - pos.entry_price
                 profit_pct = ((current_price / pos.entry_price) - 1.0) * 100.0 if pos.entry_price > 0 else 0.0
             else:
-                pos.peak_price = min(pos.peak_price, current_price) if pos.peak_price > 0 else current_price
                 profit_points = pos.entry_price - pos.peak_price
                 profit_pct = ((pos.entry_price / current_price) - 1.0) * 100.0 if current_price > 0 else 0.0
 
-            # 2. Check Absolute Stop Loss Hit First
+            # 2. Check Absolute Stop Loss Hit First (Always checked even if data is stale for safety)
             if pos.stop_loss_price > 0:
                 if pos.is_long and current_price <= pos.stop_loss_price:
                     return self._initiate_exit(pos, "SL_HIT", pos.stop_loss_price)
                 if (not pos.is_long) and current_price >= pos.stop_loss_price:
                     return self._initiate_exit(pos, "SL_HIT", pos.stop_loss_price)
 
-            # 3. Check Take Profit / Fast Momentum Extension
-            if self._is_tp_reached(pos, current_price):
-                # Check momentum extension eligibility
+            # If market data is stale, maintain existing protection but DO NOT ratchet stops or evaluate fresh profit targets
+            if is_stale_data:
+                return None, None
+
+            # 3. Check Take Profit 1 (Partial 50% Scaling) & Take Profit 2 / Momentum Extension
+            if pos.take_profit_1 > 0 and not pos.take_profit_1_hit:
+                tp1_hit = (pos.is_long and current_price >= pos.take_profit_1) or (not pos.is_long and current_price <= pos.take_profit_1)
+                if tp1_hit:
+                    pos.take_profit_1_hit = True
+                    # Breakeven ratchet upon TP1 hit: move stop loss to entry price + fee buffer
+                    be_stop = pos.entry_price * 1.001 if pos.is_long else pos.entry_price * 0.999
+                    if pos.is_long and be_stop > pos.stop_loss_price:
+                        pos.stop_loss_price = self.round_to_tick(be_stop, effective_tick)
+                    elif (not pos.is_long) and be_stop < pos.stop_loss_price:
+                        pos.stop_loss_price = self.round_to_tick(be_stop, effective_tick)
+                    return self._initiate_exit(pos, "TP1_HIT", pos.take_profit_1)
+
+            target_tp2 = pos.take_profit_2 if pos.take_profit_2 > 0 else pos.take_profit_price
+            if target_tp2 > 0 and (pos.take_profit_1_hit or pos.take_profit_1 <= 0):
+                tp2_hit = (pos.is_long and current_price >= target_tp2) or (not pos.is_long and current_price <= target_tp2)
+                if tp2_hit:
+                    market_high = recent_market_high if recent_market_high > 0 else pos.peak_price
+                    market_low = recent_market_low if recent_market_low > 0 else pos.peak_price
+                    if self._can_extend_momentum(pos, current_time, market_high, market_low):
+                        self._apply_momentum_extension(pos, effective_tick)
+                    else:
+                        pos.take_profit_2_hit = True
+                        reason = "TP2_HIT" if pos.take_profit_2 > 0 else "TP_HIT"
+                        return self._initiate_exit(pos, reason, target_tp2)
+            elif target_tp2 <= 0 and self._is_tp_reached(pos, current_price):
                 market_high = recent_market_high if recent_market_high > 0 else pos.peak_price
                 market_low = recent_market_low if recent_market_low > 0 else pos.peak_price
                 if self._can_extend_momentum(pos, current_time, market_high, market_low):

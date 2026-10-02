@@ -57,6 +57,18 @@ class Position:
     broker_sl_order_id: Optional[str] = None
     broker_tp_order_id: Optional[str] = None
 
+    # Multi-Target Partial Exit & Recovery Management (Section 9 & 10)
+    take_profit_1_quantity: float = 0.0
+    take_profit_1_hit: bool = False
+    take_profit_1_filled: bool = False
+    take_profit_2_quantity: float = 0.0
+    take_profit_2_hit: bool = False
+    take_profit_2_filled: bool = False
+    is_recovered: bool = False
+    recovery_status: str = ""       # "RECOVERED_ACTIVE" or "RECOVERY_UNRESOLVED"
+    exit_lock: bool = False
+    exit_state: str = "OPEN"        # "OPEN", "TP1_PENDING", "EXIT_PENDING", "CLOSED"
+
     @property
     def notional_value(self) -> float:
         return self.quantity * self.current_price
@@ -95,6 +107,10 @@ class Position:
             initial_stop_loss=self.initial_stop_loss if self.initial_stop_loss > 0 else self.stop_loss,
             stop_loss_price=self.stop_loss,
             take_profit_price=self.take_profit_2 if self.take_profit_2 > 0 else self.take_profit_1,
+            take_profit_1=self.take_profit_1,
+            take_profit_1_hit=self.take_profit_1_hit,
+            take_profit_2=self.take_profit_2,
+            take_profit_2_hit=self.take_profit_2_hit,
             broker_sl_price=self.broker_sl_price if self.broker_sl_price > 0 else self.stop_loss,
             sl_percent=self.sl_percent,
             status="OPEN",
@@ -107,7 +123,7 @@ class Position:
             validation_survived=self.validation_survived,
             volume_drop_detected=self.volume_drop_detected,
             trailing_sl_active=self.trailing_sl_active,
-            is_exit_initiated=self.is_exit_initiated,
+            is_exit_initiated=self.is_exit_initiated or self.exit_lock,
             momentum_status=self.momentum_status,
             original_target_distance=self.original_target_distance,
             extension_level=self.extension_level,
@@ -131,6 +147,8 @@ class Position:
         self.trailing_sl_active = cp.trailing_sl_active
         self.is_exit_initiated = cp.is_exit_initiated
         self.momentum_status = cp.momentum_status
+        self.take_profit_1_hit = getattr(cp, "take_profit_1_hit", self.take_profit_1_hit)
+        self.take_profit_2_hit = getattr(cp, "take_profit_2_hit", self.take_profit_2_hit)
         if cp.take_profit_price > 0 and not math.isinf(cp.take_profit_price):
             self.take_profit_2 = cp.take_profit_price
         self.original_target_distance = cp.original_target_distance
@@ -166,7 +184,7 @@ class PortfolioTracker:
         self.min_cash_reserve_pct = min_cash_reserve_pct
         self.persistence_file = Path(persistence_file)
         self.persistence_file.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
         # Balances
         self.cash: float = initial_capital
@@ -238,7 +256,7 @@ class PortfolioTracker:
         side: str,
         quantity: float,
         price: float,
-        fee: float,
+        fee: float = 0.0,
         fee_coin: str = "USD",
         strategy: str = "",
         stop_loss: float = 0.0,
@@ -277,7 +295,11 @@ class PortfolioTracker:
                     existing.stop_loss = stop_loss or existing.stop_loss
                     existing.take_profit_1 = take_profit_1 or existing.take_profit_1
                     existing.take_profit_2 = take_profit_2 or existing.take_profit_2
+                    existing.take_profit_1_quantity = total_qty * 0.50
+                    existing.take_profit_2_quantity = total_qty - existing.take_profit_1_quantity
                 else:
+                    tp1_qty = quantity * 0.50
+                    tp2_qty = quantity - tp1_qty
                     self.positions[symbol] = Position(
                         symbol=symbol,
                         base_coin=base_coin,
@@ -289,7 +311,9 @@ class PortfolioTracker:
                         strategy=strategy,
                         stop_loss=stop_loss,
                         take_profit_1=take_profit_1,
+                        take_profit_1_quantity=tp1_qty,
                         take_profit_2=take_profit_2,
+                        take_profit_2_quantity=tp2_qty,
                         opened_timestamp=int(time.time() * 1000),
                         highest_price=price,
                         side="BUY",
@@ -314,23 +338,24 @@ class PortfolioTracker:
                     )
 
             elif side.upper() == "SELL":
-                self.cash += (notional - fee)
-
                 pos = self.positions.get(symbol)
+                # Invariant: Never manufacture cash without corresponding valid inventory!
                 if pos is not None and pos.quantity > 0:
                     sold_qty = min(quantity, pos.quantity)
+                    actual_notional = sold_qty * price
+                    self.cash += (actual_notional - fee)
                     trade_pnl = sold_qty * (price - pos.entry_price) - fee
                     pos.realized_pnl += trade_pnl
                     self.realized_pnl += trade_pnl
                     pos.quantity -= sold_qty
 
-
                     if pos.quantity <= 1e-7:
                         # Fully closed
                         del self.positions[symbol]
                     else:
-                        # Partial close
                         pos.unrealized_pnl = pos.quantity * (price - pos.entry_price)
+                        pos.exit_lock = False
+                        pos.is_exit_initiated = False
 
             self._record_snapshot()
             self._persist()
@@ -392,6 +417,7 @@ class PortfolioTracker:
         """Save state atomically."""
         try:
             data = {
+                "state_version": 2,
                 "initial_capital": self.initial_capital,
                 "cash": self.cash,
                 "locked_cash": self.locked_cash,
