@@ -9,9 +9,11 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu/autosl
 EnvironmentFile=-/home/ubuntu/autosl/.env
+Environment="TZ=Asia/Kolkata"
+Environment="PYTHONUNBUFFERED=1"
 ExecStart=/home/ubuntu/autosl/venv/bin/python3 main.py --config config/config.yaml
-Restart=on-failure
-RestartSec=10
+Restart=always
+RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=30
 
