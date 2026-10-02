@@ -789,12 +789,15 @@ class RoostooAutonomousBot:
                 fees_pct = self.config.fees.taker_fee_pct + self.config.fees.slippage_pct
                 sig_va = self.strategy_engine.strategy_va.evaluate(symbol, df_5m, regime_info, fees_pct=fees_pct)
                 sig_ls = self.strategy_engine.strategy_ls.evaluate(symbol, df_5m, regime_info, fees_pct=fees_pct)
-                sig_cvd = self.strategy_engine.strategy_cvd.evaluate(
-                    symbol, df_5m, regime_info,
-                    cvd_available=self.market_data.cvd_available,
-                    oi_available=self.market_data.oi_available,
-                    fees_pct=fees_pct
-                )
+                if self.config.strategies.cvd_absorption.enabled:
+                    sig_cvd = self.strategy_engine.strategy_cvd.evaluate(
+                        symbol, df_5m, regime_info,
+                        cvd_available=self.market_data.cvd_available,
+                        oi_available=self.market_data.oi_available,
+                        fees_pct=fees_pct
+                    )
+                else:
+                    sig_cvd = {"direction": "NO_TRADE", "confidence": 0.0, "reason": "Strategy disabled"}
                 chosen_sig = self.strategy_engine.evaluate_symbol(
                     symbol, df_5m,
                     cvd_available=self.market_data.cvd_available,

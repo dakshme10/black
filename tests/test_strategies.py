@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import time
 
+from config.trading_params import CvdAbsorptionConfig
 from core.regime_detector import MarketRegime, RegimeClassification
 from core.strategy_engine import StrategyEngine, Signal
 from strategies.value_area import ValueAreaStrategy
@@ -100,12 +101,23 @@ def test_liquidity_sweep_bullish(base_df):
         assert sig["take_profit_1"] == pytest.approx(expected_tp1, rel=1e-4)
 
 
+def test_cvd_disabled_by_default(base_df):
+    """
+    When CVD absorption strategy is disabled in config, evaluate() returns NO_TRADE.
+    """
+    cvd = CvdAbsorptionStrategy(CvdAbsorptionConfig(enabled=False))
+    regime = RegimeClassification(regime=MarketRegime.HIGH_VOLATILITY_REVERSAL, confidence=0.85, trend_direction="BULLISH")
+    sig = cvd.evaluate("BTC/USD", base_df, regime, cvd_available=True, oi_available=True)
+    assert sig["direction"] == "NO_TRADE"
+    assert "Strategy disabled" in sig["reason"]
+
+
 def test_cvd_graceful_degradation_without_hallucination(base_df):
     """
     Principle 3: When CVD/OI is unavailable on exchange, strategy must detect absence
     and return NO_TRADE without fabricating random or mock values.
     """
-    cvd = CvdAbsorptionStrategy()
+    cvd = CvdAbsorptionStrategy(CvdAbsorptionConfig(enabled=True))
     regime = RegimeClassification(regime=MarketRegime.HIGH_VOLATILITY_REVERSAL, confidence=0.85, trend_direction="BULLISH")
 
     sig = cvd.evaluate("BTC/USD", base_df, regime, cvd_available=False, oi_available=False)
@@ -125,7 +137,7 @@ def test_cvd_selling_absorption_with_delta(base_df):
     df.iloc[-1, df.columns.get_loc("delta")] = 50.0  # Positive delta turn
     df.iloc[-1, df.columns.get_loc("close")] = 50500.0 # Reclaims EMA20
 
-    cvd = CvdAbsorptionStrategy()
+    cvd = CvdAbsorptionStrategy(CvdAbsorptionConfig(enabled=True))
     regime = RegimeClassification(regime=MarketRegime.HIGH_VOLATILITY_REVERSAL, confidence=0.85, trend_direction="BULLISH")
     sig = cvd.evaluate("BTC/USD", df, regime, cvd_available=True, oi_available=True)
 

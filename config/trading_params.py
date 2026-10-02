@@ -159,7 +159,7 @@ class LiquiditySweepConfig:
 
 @dataclass
 class CvdAbsorptionConfig:
-    enabled: bool = True
+    enabled: bool = False
     delta_period: int = 14
     divergence_window: int = 5
     require_vwap_reclaim: bool = True

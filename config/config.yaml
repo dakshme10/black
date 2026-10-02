@@ -98,7 +98,7 @@ strategies:
     tp1_r_multiple: 2.0
 
   cvd_absorption:
-    enabled: true
+    enabled: false
     delta_period: 14
     divergence_window: 5
     require_vwap_reclaim: true

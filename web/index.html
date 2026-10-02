@@ -744,7 +744,7 @@
                     <span id="badge-git" class="pill mono" style="background: rgba(148, 163, 184, 0.12); border: 1px solid #334466; color: #94a3b8;" title="Deployed Git Commit SHA">GIT: <span id="git-commit-val">HEAD</span></span>
                     <span id="badge-pause" class="pill pill-blue" style="display:none;">PAUSED</span>
                 </div>
-                <div class="brand-sub">Production Quant System • Value Area • Liquidity Sweeps • CVD Absorption</div>
+                <div class="brand-sub">Production Quant System • Value Area • Liquidity Sweeps</div>
             </div>
         </div>
 
@@ -1752,37 +1752,6 @@
                                 </div>
                             </div>
 
-                            <div class="module-box">
-                                <div class="module-header">
-                                    <span class="module-title"><span>🌊</span> Strategy C: CVD Absorption & Delta</span>
-                                    <span class="pill ${cvd.signal === 'BUY' ? 'pill-live' : (cvd.signal === 'DE_RISK' ? 'pill-red' : 'pill-blue')} mono" id="cvd-sig-${cleanSym}">
-                                        ${cvd.signal} (${(cvd.confidence * 100).toFixed(0)}%)
-                                    </span>
-                                </div>
-                                <div class="module-grid">
-                                    <div class="stat-item">
-                                        <span class="stat-label">Latest Bar Delta</span>
-                                        <span class="stat-val mono ${(cvd.delta_volume || 0) >= 0 ? 'text-pos' : 'text-neg'}" id="delta-${cleanSym}">
-                                            ${(cvd.delta_volume || 0) >= 0 ? '+' : ''}${(cvd.delta_volume || 0).toFixed(2)}
-                                        </span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <span class="stat-label">Cumulative Delta (CVD)</span>
-                                        <span class="stat-val mono" id="cvd-${cleanSym}">${(cvd.cvd_value || 0).toFixed(1)}</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <span class="stat-label">CVD Stream Status</span>
-                                        <span class="stat-val mono ${cvd.degraded_mode ? 'text-warn' : 'text-pos'}" id="cvd-stat-${cleanSym}">
-                                            ${cvd.degraded_mode ? 'Synthesized Delta' : 'Live Feed'}
-                                        </span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <span class="stat-label">Delta Absorption</span>
-                                        <span class="stat-val mono text-accent" id="absorb-${cleanSym}">${cvd.signal !== 'NO_TRADE' ? 'ABSORPTION SIGNAL' : 'EQUILIBRIUM'}</span>
-                                    </div>
-                                </div>
-                            </div>
-
                             <div class="actionable-signal">
                                 <div class="signal-decision">
                                     <div style="font-size:10px; color:var(--text-dim); font-weight:600; text-transform:uppercase;">Strategy Engine Decision:</div>
@@ -1881,15 +1850,6 @@
                     if (swhighEl) swhighEl.innerText = `$${(ls.swing_high || 0).toFixed(2)}`;
                     const swlowEl = document.getElementById(`swlow-${cleanSym}`);
                     if (swlowEl) swlowEl.innerText = `$${(ls.swing_low || 0).toFixed(2)}`;
-
-                    const deltaEl = document.getElementById(`delta-${cleanSym}`);
-                    if (deltaEl) {
-                        const d = cvd.delta_volume || 0;
-                        deltaEl.innerText = `${d >= 0 ? '+' : ''}${d.toFixed(2)}`;
-                        deltaEl.className = `stat-val mono ${d >= 0 ? 'text-pos' : 'text-neg'}`;
-                    }
-                    const cvdEl = document.getElementById(`cvd-${cleanSym}`);
-                    if (cvdEl) cvdEl.innerText = (cvd.cvd_value || 0).toFixed(1);
 
                     const sigBadge = document.getElementById(`sig-badge-${cleanSym}`);
                     if (sigBadge) {

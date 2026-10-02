@@ -26,6 +26,13 @@ def mock_bot(tmp_path):
     bot = RoostooAutonomousBot(config)
     bot.order_manager.persistence_file = str(tmp_path / "orders.json")
     bot.portfolio.persistence_file = str(tmp_path / "portfolio.json")
+    bot.portfolio.positions.clear()
+    bot.portfolio.cash = config.portfolio.initial_capital
+    bot.portfolio.realized_pnl = 0.0
+    bot.portfolio.equity_curve.clear()
+    bot.order_manager._orders_by_client_id.clear()
+    bot.order_manager._orders_by_exchange_id.clear()
+    bot.order_manager._symbol_locks.clear()
 
     # Seed mock ticker data so tracking works
     bot.market_data._latest_tickers = {}
@@ -228,3 +235,13 @@ def test_command_graceful_shutdown(mock_bot):
     data = res.json()
     assert data["status"] == "success"
     assert "shutdown" in data["message"].lower()
+
+
+def test_trade_log_csv_endpoint(mock_bot):
+    server = WebServer(mock_bot, port=8080)
+    client = TestClient(server.app)
+
+    res = client.get("/api/trade-log.csv")
+    assert res.status_code == 200
+    assert "timestamp_ist" in res.text
+    assert "symbol" in res.text

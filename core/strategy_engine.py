@@ -104,16 +104,17 @@ class StrategyEngine:
             raw_signals.append(sig_ls)
 
         # Strategy C: CVD Absorption (gracefully handles missing CVD/OI)
-        sig_cvd = self.strategy_cvd.evaluate(
-            symbol,
-            df,
-            regime_info,
-            cvd_available=cvd_available,
-            oi_available=oi_available,
-            fees_pct=fees_pct,
-        )
-        if sig_cvd["direction"] != "NO_TRADE":
-            raw_signals.append(sig_cvd)
+        if getattr(self.config, "cvd_absorption", None) and self.config.cvd_absorption.enabled:
+            sig_cvd = self.strategy_cvd.evaluate(
+                symbol,
+                df,
+                regime_info,
+                cvd_available=cvd_available,
+                oi_available=oi_available,
+                fees_pct=fees_pct,
+            )
+            if sig_cvd["direction"] != "NO_TRADE":
+                raw_signals.append(sig_cvd)
 
         curr_vol = float(df["volume"].iloc[-1]) if ("volume" in df.columns and len(df) > 0) else 0.0
         prev_vol = float(df["volume"].iloc[-2]) if ("volume" in df.columns and len(df) > 1) else 0.0
