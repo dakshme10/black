@@ -68,6 +68,11 @@ class RiskManager:
     def is_frozen(self) -> bool:
         return time.time() < self.freeze_until_timestamp
 
+    def reset_circuit_breaker(self) -> None:
+        """Reset circuit breaker flags when reconciliation aligns capital or operator clears freeze."""
+        self.permanent_kill_switch = False
+        self.freeze_until_timestamp = 0.0
+
 
     def check_circuit_breakers(self) -> Tuple[bool, str]:
         """

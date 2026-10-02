@@ -40,6 +40,7 @@ class ReconciliationEngine:
         audit_logger: Optional[AuditLogger] = None,
         cash_tolerance: float = 0.10, # $0.10 tolerance for float rounding
         emergency_recovery_sl_pct: float = 0.02, # 2.0% emergency stop loss for recovered positions
+        risk_manager: Optional[Any] = None,
     ):
         self.client = api_client
         self.portfolio = portfolio_tracker
@@ -47,6 +48,7 @@ class ReconciliationEngine:
         self.audit_logger = audit_logger
         self.cash_tolerance = cash_tolerance
         self.emergency_recovery_sl_pct = emergency_recovery_sl_pct
+        self.risk_manager = risk_manager
 
         self.last_reconciliation_time: float = 0.0
         self.is_reconciled: bool = False
@@ -96,13 +98,19 @@ class ReconciliationEngine:
                     self.portfolio.cash = ex_usd_free
                     self.portfolio.locked_cash = ex_usd_lock
 
-                    # Re-align peak equity and clean stale paper-run curve when migrating baselines
-                    curr_eq = self.portfolio.total_equity
-                    if self.portfolio.peak_equity > curr_eq * 1.05:
-                        self.portfolio.peak_equity = curr_eq
-                        self.portfolio.equity_curve = [s for s in self.portfolio.equity_curve if s.equity <= curr_eq * 1.05]
-                        if not self.portfolio.equity_curve:
-                            self.portfolio._record_snapshot()
+                # Re-align peak equity and clean stale paper-run curve whenever peak exceeds exchange truth with no open positions
+                curr_eq = self.portfolio.total_equity
+                if not self.portfolio.positions and self.portfolio.peak_equity > curr_eq * 1.05:
+                    actions.append(
+                        f"Re-aligned peak equity from ${self.portfolio.peak_equity:,.2f} to ${curr_eq:,.2f} to prevent stale capital drawdown"
+                    )
+                    self.portfolio.peak_equity = curr_eq
+                    self.portfolio.equity_curve = [s for s in self.portfolio.equity_curve if s.equity <= curr_eq * 1.05]
+                    if not self.portfolio.equity_curve:
+                        self.portfolio._record_snapshot()
+                    self.portfolio._persist()
+                    if self.risk_manager:
+                        self.risk_manager.reset_circuit_breaker()
 
                 # 4. Compare Crypto Asset Holdings
                 exchange_pairs = set()

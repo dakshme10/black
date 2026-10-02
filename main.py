@@ -116,6 +116,7 @@ class RoostooAutonomousBot:
             order_manager=self.order_manager,
             audit_logger=self.logger,
             emergency_recovery_sl_pct=getattr(config.risk_controls, "emergency_recovery_sl_pct", 0.02),
+            risk_manager=self.risk_manager,
         )
 
         # Signal Deduplication Cache & Periodic Timers (Section 3C, 3D, 8)
@@ -212,14 +213,7 @@ class RoostooAutonomousBot:
         print("=" * 70)
 
 
-        # Validate Live Safety Gate
-        gate_ok, gate_msg = self.verify_live_safety_gate()
-        print(f"Safety Gate Status: {gate_msg}")
-        if not gate_ok and not self.config.dry_run:
-            self.logger.log_system_event("STARTUP_FAILURE", f"Safety gate rejected live trading: {gate_msg}")
-            return False
-
-        # Startup Reconciliation (Section 24)
+        # Startup Reconciliation (Section 24): Align local ledger with exchange ground truth first
         if not self.config.dry_run and self.config.api_key:
             print("\n[+] Executing Startup Reconciliation against Roostoo exchange truth...")
             recon_report = self.reconciliation.reconcile()
@@ -229,6 +223,13 @@ class RoostooAutonomousBot:
             if not recon_report.is_synchronized:
                 print("[!] CRITICAL: Reconciliation failed. Halting startup.")
                 return False
+
+        # Validate Live Safety Gate (evaluates against synchronized exchange state)
+        gate_ok, gate_msg = self.verify_live_safety_gate()
+        print(f"Safety Gate Status: {gate_msg}")
+        if not gate_ok and not self.config.dry_run:
+            self.logger.log_system_event("STARTUP_FAILURE", f"Safety gate rejected live trading: {gate_msg}")
+            return False
 
         # Initial Market Data Fetch
         print("\n[+] Polling initial market tickers...")

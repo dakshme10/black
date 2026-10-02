@@ -442,6 +442,7 @@ class PortfolioTracker:
         try:
             with open(self.persistence_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            persisted_initial = float(data.get("initial_capital", self.initial_capital))
             self.cash = float(data.get("cash", self.initial_capital))
             self.locked_cash = float(data.get("locked_cash", 0.0))
             self.realized_pnl = float(data.get("realized_pnl", 0.0))
@@ -460,5 +461,17 @@ class PortfolioTracker:
 
             curve_data = data.get("equity_curve", [])
             self.equity_curve = [EquitySnapshot(**s) for s in curve_data]
+
+            curr_equity = self.total_equity
+            # Guard against stale baseline / paper run peak equity poisoning live mock run
+            if (
+                abs(persisted_initial - self.initial_capital) > 1.0
+                or (not self.positions and self.peak_equity > curr_equity * 1.05)
+            ):
+                self.peak_equity = curr_equity
+                self.equity_curve = [s for s in self.equity_curve if s.equity <= curr_equity * 1.05]
+                if not self.equity_curve:
+                    self._record_snapshot()
+                self._persist()
         except Exception:
             pass
