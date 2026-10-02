@@ -713,8 +713,14 @@ class RoostooAutonomousBot:
         """Reset rolling 24h freeze timer and cleared breaker flags."""
         self.risk_manager.freeze_until_timestamp = 0.0
         self.risk_manager.permanent_kill_switch = False
+        self.portfolio.peak_equity = self.portfolio.total_equity
+        curr_eq = self.portfolio.total_equity
+        self.portfolio.equity_curve = [s for s in self.portfolio.equity_curve if s.equity <= curr_eq * 1.05]
+        if not self.portfolio.equity_curve:
+            self.portfolio._record_snapshot()
+        self.portfolio._persist()
         self.logger.log_system_event("RISK_RESET", "Operator manually reset risk circuit breaker freeze via dashboard")
-        return {"reset": True, "is_frozen": False}
+        return {"reset": True, "is_frozen": False, "permanent_breaker": False}
 
 
     def handle_manual_trade(self, symbol: str, side: str, notional_usd: float = 0.0) -> Dict[str, Any]:

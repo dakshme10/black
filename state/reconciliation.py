@@ -96,6 +96,14 @@ class ReconciliationEngine:
                     self.portfolio.cash = ex_usd_free
                     self.portfolio.locked_cash = ex_usd_lock
 
+                    # Re-align peak equity and clean stale paper-run curve when migrating baselines
+                    curr_eq = self.portfolio.total_equity
+                    if self.portfolio.peak_equity > curr_eq * 1.05:
+                        self.portfolio.peak_equity = curr_eq
+                        self.portfolio.equity_curve = [s for s in self.portfolio.equity_curve if s.equity <= curr_eq * 1.05]
+                        if not self.portfolio.equity_curve:
+                            self.portfolio._record_snapshot()
+
                 # 4. Compare Crypto Asset Holdings
                 exchange_pairs = set()
                 for coin, coin_bal in wallet.items():
