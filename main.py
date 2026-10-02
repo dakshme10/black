@@ -34,6 +34,7 @@ from state.order_state import OrderStateManager
 from state.portfolio_tracker import PortfolioTracker
 from state.reconciliation import ReconciliationEngine
 from core.web_server import WebServer
+from core.telegram_notifier import TelegramNotifier
 
 
 class RoostooAutonomousBot:
@@ -133,6 +134,13 @@ class RoostooAutonomousBot:
                 port=config.web.port,
                 auth_token=config.web.auth_token,
             )
+
+        # Telegram Notification Channel
+        self.notifier = TelegramNotifier(
+            bot_token=getattr(config.telegram, "bot_token", ""),
+            chat_id=getattr(config.telegram, "chat_id", ""),
+            enabled=getattr(config.telegram, "enabled", False),
+        )
 
     def verify_live_safety_gate(self) -> Tuple[bool, str]:
         """
@@ -238,6 +246,16 @@ class RoostooAutonomousBot:
             print(f"\n[+] Starting Web Telemetry Dashboard on http://{self.config.web.host}:{self.config.web.port} ...")
             self.web_server.start()
 
+        # Dispatch Telegram Startup Alert
+        if getattr(self, "notifier", None):
+            self.notifier.notify_startup(
+                mode=mode_str,
+                git_commit=self.git_commit,
+                equity=self.portfolio.total_equity,
+                pairs=self.config.market_data.pairs,
+                tickers={p: snap.last_price for p, snap in tickers.items()},
+            )
+
         return True
 
     def run_cycle(self) -> None:
@@ -262,6 +280,12 @@ class RoostooAutonomousBot:
         is_tripped, breaker_msg = self.risk_manager.check_circuit_breakers()
         if is_tripped:
             self.last_error = f"CIRCUIT_BREAKER: {breaker_msg}"
+            if getattr(self, "notifier", None):
+                self.notifier.notify_circuit_breaker(
+                    reason=breaker_msg,
+                    current_drawdown_pct=self.portfolio.get_current_drawdown(),
+                    max_drawdown_pct=self.config.risk_controls.max_drawdown_limit,
+                )
             # Liquidate open positions if max drawdown hit
             if self.risk_manager.permanent_kill_switch:
                 for sym in list(self.portfolio.positions.keys()):
@@ -372,6 +396,22 @@ class RoostooAutonomousBot:
                 risk_dec = self.risk_manager.evaluate_signal(stop_sig)
                 order = self.executor.execute_decision(stop_sig, risk_dec, trigger_price_val)
                 self.last_order = f"{exit_reason} {sym} @ {trigger_price_val:.2f}"
+                if order and getattr(self, "notifier", None):
+                    pnl_usd = (trigger_price_val - pos.entry_price) * pos.quantity if pos.side == "BUY" else (pos.entry_price - trigger_price_val) * pos.quantity
+                    pnl_pct = ((trigger_price_val / pos.entry_price) - 1.0) * 100.0 if pos.entry_price > 0 else 0.0
+                    if pos.side != "BUY" and trigger_price_val > 0:
+                        pnl_pct = ((pos.entry_price / trigger_price_val) - 1.0) * 100.0
+                    self.notifier.notify_trade_exit(
+                        symbol=sym,
+                        side=pos.side,
+                        exit_reason=exit_reason,
+                        exit_price=trigger_price_val,
+                        entry_price=pos.entry_price,
+                        quantity=pos.quantity,
+                        pnl_usd=pnl_usd,
+                        pnl_pct=pnl_pct,
+                        saved_loss_pct=extra_details.get("saved_loss_pct"),
+                    )
                 continue
 
         # 5. Evaluate Target Pairs for New Trading Opportunities
@@ -426,6 +466,18 @@ class RoostooAutonomousBot:
                 order = self.executor.execute_decision(signal, risk_decision, curr_px)
                 if order:
                     self.last_order = f"{order.side} {symbol} qty={order.quantity} px={order.price:.2f} ({order.status.value})"
+                    if getattr(self, "notifier", None):
+                        self.notifier.notify_trade_entry(
+                            symbol=symbol,
+                            side=order.side,
+                            strategy=signal.strategy,
+                            price=order.price,
+                            quantity=order.quantity,
+                            notional_usd=order.quantity * order.price,
+                            stop_loss=signal.stop_loss,
+                            take_profit=signal.take_profit_1,
+                            confidence=signal.confidence,
+                        )
 
     def render_observability_dashboard(self) -> None:
         """
@@ -484,6 +536,16 @@ class RoostooAutonomousBot:
         if self.web_server:
             self.web_server.stop()
 
+        # Send Telegram Shutdown Alert (flushed synchronously before process exit)
+        if getattr(self, "notifier", None):
+            self.notifier.notify_shutdown(
+                reason="Service Stop / Process Terminated",
+                equity=self.portfolio.total_equity,
+                realized_pnl=self.portfolio.realized_pnl,
+                open_positions=len([p for p in self.portfolio.positions.values() if p.quantity > 0]),
+                wait_seconds=2.0,
+            )
+
         self.portfolio._persist()
         self.order_manager._persist()
 
@@ -507,6 +569,8 @@ class RoostooAutonomousBot:
         self.paused = not self.paused
         state_str = "PAUSED" if self.paused else "RESUMED"
         self.logger.log_system_event("OPERATOR_PAUSE_TOGGLE", f"Bot execution toggled to {state_str}", {"paused": self.paused})
+        if getattr(self, "notifier", None):
+            self.notifier.notify_pause_state(self.paused)
         return self.paused
 
     def handle_kill_switch(self) -> Dict[str, Any]:

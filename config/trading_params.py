@@ -186,6 +186,13 @@ class WebConfig:
 
 
 @dataclass
+class TelegramConfig:
+    enabled: bool = True
+    bot_token: str = ""
+    chat_id: str = ""
+
+
+@dataclass
 class AppConfig:
     exchange: ExchangeConfig = field(default_factory=ExchangeConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
@@ -198,6 +205,7 @@ class AppConfig:
     strategies: StrategiesConfig = field(default_factory=StrategiesConfig)
     audit: AuditConfig = field(default_factory=AuditConfig)
     web: WebConfig = field(default_factory=WebConfig)
+    telegram: TelegramConfig = field(default_factory=TelegramConfig)
 
     # Environment-based security flags
     api_key: str = ""
@@ -386,12 +394,34 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
             broadcast_interval_seconds=float(wb.get("broadcast_interval_seconds", 1.0)),
         )
 
+    # Populate telegram
+    if "telegram" in raw_cfg:
+        tg = raw_cfg["telegram"]
+        app_cfg.telegram = TelegramConfig(
+            enabled=bool(tg.get("enabled", True)),
+            bot_token=str(tg.get("bot_token", "")),
+            chat_id=str(tg.get("chat_id", "")),
+        )
+
     # Environment variables override credentials and execution safety
     app_cfg.api_key = os.getenv("ROOSTOO_API_KEY", "")
     app_cfg.secret_key = os.getenv("ROOSTOO_SECRET_KEY", "")
     base_url_env = os.getenv("ROOSTOO_BASE_URL")
     if base_url_env:
         app_cfg.exchange.base_url = base_url_env
+
+    # Telegram env overrides
+    tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if tg_token:
+        app_cfg.telegram.bot_token = tg_token.strip()
+    tg_chat = os.getenv("TELEGRAM_CHAT_ID")
+    if tg_chat:
+        app_cfg.telegram.chat_id = tg_chat.strip()
+    tg_enabled = os.getenv("TELEGRAM_ENABLED")
+    if tg_enabled is not None:
+        app_cfg.telegram.enabled = tg_enabled.lower() in ("true", "1", "yes")
+    elif not app_cfg.telegram.bot_token or not app_cfg.telegram.chat_id:
+        app_cfg.telegram.enabled = False
 
     # Web Dashboard env overrides
     dash_port = os.getenv("ROOSTOO_DASHBOARD_PORT")

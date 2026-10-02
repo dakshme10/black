@@ -116,3 +116,9 @@ web:
   auth_token: ""
   broadcast_interval_seconds: 1.0
 
+telegram:
+  enabled: true
+  bot_token: ""
+  chat_id: ""
+
+
