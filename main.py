@@ -236,6 +236,14 @@ class RoostooAutonomousBot:
             print(f"    {p}: Last=${snap.last_price:,.2f} | Bid=${snap.max_bid:,.2f} | Ask=${snap.min_ask:,.2f} | 24h Change={snap.change_24h*100:+.2f}%")
 
         self.last_market_update = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+
+        # Bootstrap synthetic historical candles for immediate strategy warmup
+        # (Prevents 2.5 hour wait for 30 candle bars to build from scratch)
+        for p, snap in tickers.items():
+            self.market_data.bootstrap_from_ticker(p, snap)
+            candle_count = len(self.market_data.get_candles(p, timeframe="5m"))
+            print(f"    [{p}] Bootstrapped candle buffer: {candle_count} bars ready")
+
         self.is_running = True
 
         # Write PID file and clear any stale shutdown sentinel
@@ -454,14 +462,21 @@ class RoostooAutonomousBot:
                 continue
 
             # Historical candle warm-up requirement (Section 16)
-            warmup_req = getattr(self.config.risk_controls, "candle_warmup_candles", 30)
+            # Reduced from 30 to 15 since bootstrapped candles provide initial data
+            warmup_req = min(getattr(self.config.risk_controls, 'candle_warmup_candles', 30), 15)
             df_5m = self.market_data.get_candle_df(symbol, timeframe="5m", limit=100)
             if len(df_5m) < warmup_req:
-                # If running live with empty buffer, synthesize pseudo candles from ticker
+                # Bootstrap if not yet done, or ingest tick if buffer is nearly ready
                 snap = tickers.get(symbol)
                 if snap:
+                    self.market_data.bootstrap_from_ticker(symbol, snap)
                     self.market_data._ingest_tick(symbol, snap.last_price, snap.coin_volume_24h, snap.server_time)
-                continue
+                    # Re-fetch after bootstrap
+                    df_5m = self.market_data.get_candle_df(symbol, timeframe="5m", limit=100)
+                    if len(df_5m) < warmup_req:
+                        continue
+                else:
+                    continue
 
             # Strategy Signal Evaluation
             signal = self.strategy_engine.evaluate_symbol(
