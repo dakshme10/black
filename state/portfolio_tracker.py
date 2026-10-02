@@ -349,8 +349,8 @@ class PortfolioTracker:
                     self.realized_pnl += trade_pnl
                     pos.quantity -= sold_qty
 
-                    if pos.quantity <= 1e-7:
-                        # Fully closed
+                    if pos.quantity <= 1e-5 or (getattr(pos, "take_profit_2_filled", False) and pos.quantity <= 1e-4):
+                        # Fully closed (clean up sub-minimum dust)
                         del self.positions[symbol]
                     else:
                         pos.unrealized_pnl = pos.quantity * (price - pos.entry_price)
@@ -451,10 +451,12 @@ class PortfolioTracker:
 
             pos_dict = data.get("positions", {})
             valid_fields = set(Position.__dataclass_fields__.keys())
-            self.positions = {
-                sym: Position(**{k: v for k, v in p.items() if k in valid_fields})
-                for sym, p in pos_dict.items()
-            }
+            loaded_positions = {}
+            for sym, p in pos_dict.items():
+                pos_obj = Position(**{k: v for k, v in p.items() if k in valid_fields})
+                if pos_obj.quantity > 1e-5 and not (getattr(pos_obj, "take_profit_2_filled", False) and pos_obj.quantity <= 1e-4):
+                    loaded_positions[sym] = pos_obj
+            self.positions = loaded_positions
 
             curve_data = data.get("equity_curve", [])
             self.equity_curve = [EquitySnapshot(**s) for s in curve_data]

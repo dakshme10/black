@@ -11,6 +11,7 @@ from __future__ import annotations
 import html
 import json
 import logging
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -32,6 +33,7 @@ class TelegramNotifier:
         self.enabled = bool(enabled and self.bot_token and self.chat_id)
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="telegram_notify")
         self._api_url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+        self._recent_messages: Dict[int, float] = {}
 
         if self.enabled:
             logger.info("Telegram notifier initialized (chat_id: %s)", self.chat_id)
@@ -51,6 +53,15 @@ class TelegramNotifier:
         """
         if not self.enabled:
             return False
+
+        # Deduplicate identical messages sent within 30 seconds
+        now = time.time()
+        self._recent_messages = {h: t for h, t in self._recent_messages.items() if now - t < 60.0}
+        msg_hash = hash(text)
+        if msg_hash in self._recent_messages and (now - self._recent_messages[msg_hash]) < 30.0:
+            logger.info("Dropping duplicate Telegram message within 30s rate window.")
+            return True
+        self._recent_messages[msg_hash] = now
 
         if blocking:
             return self._send_http(text, parse_mode, timeout)
@@ -225,6 +236,9 @@ class TelegramNotifier:
         """
         Alerts when an open trade position is closed.
         """
+        if quantity <= 1e-5:
+            return
+
         is_profit = pnl_usd >= 0
         icon = "🎯" if is_profit else "🛡️"
         outcome_label = "PROFIT TARGET HIT" if is_profit else "STOPPED OUT / INVALIDATED"

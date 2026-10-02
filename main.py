@@ -340,10 +340,13 @@ class RoostooAutonomousBot:
         # 4. Manage Open Positions via AutoSL Exit Engine
         # (Phase 1 Validation Window + Phase 2 Dynamic Trailing + Fast Momentum Extension)
         for sym, pos in list(self.portfolio.positions.items()):
-            if pos.quantity <= 0:
+            curr_px = mark_prices.get(sym, 0.0)
+            if pos.quantity <= 1e-5 or (curr_px > 0 and pos.quantity * curr_px < 2.0) or (getattr(pos, "take_profit_2_filled", False) and pos.quantity <= 1e-4):
+                if sym in self.portfolio.positions:
+                    del self.portfolio.positions[sym]
+                    self.portfolio._persist()
                 continue
 
-            curr_px = mark_prices.get(sym, 0.0)
             if curr_px <= 0:
                 continue
 
@@ -431,7 +434,7 @@ class RoostooAutonomousBot:
                 risk_dec = self.risk_manager.evaluate_signal(stop_sig)
                 order = self.executor.execute_decision(stop_sig, risk_dec, trigger_price_val)
                 self.last_order = f"{exit_reason} {sym} @ {trigger_price_val:.2f}"
-                if order and getattr(self, "notifier", None):
+                if order and getattr(order, "filled_quantity", 0.0) > 1e-6 and getattr(self, "notifier", None):
                     pnl_usd = (trigger_price_val - pos.entry_price) * pos.quantity if pos.side == "BUY" else (pos.entry_price - trigger_price_val) * pos.quantity
                     pnl_pct = ((trigger_price_val / pos.entry_price) - 1.0) * 100.0 if pos.entry_price > 0 else 0.0
                     if pos.side != "BUY" and trigger_price_val > 0:

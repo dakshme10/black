@@ -244,6 +244,21 @@ class OrderExecutor:
             factor = 10 ** amount_precision
             qty = math.floor(qty * factor) / factor
 
+            if qty <= 1e-7:
+                if side == "SELL" and current_pos:
+                    current_pos.exit_lock = False
+                    current_pos.is_exit_initiated = False
+                    if current_pos.quantity <= 1e-4 or (current_market_price > 0 and current_pos.quantity * current_market_price < 5.0):
+                        if signal.symbol in self.portfolio.positions:
+                            del self.portfolio.positions[signal.symbol]
+                            self.portfolio._persist()
+                if self.audit_logger:
+                    self.audit_logger.log_system_event(
+                        "ORDER_REJECTED_ZERO_QTY",
+                        f"Order rejected: quantity {qty} is below symbol precision for {signal.symbol}",
+                    )
+                return None
+
             order_type = "MARKET"
             price = round(current_market_price, price_precision)
             client_order_id = self.order_manager.generate_client_order_id(signal.strategy, signal.symbol)
