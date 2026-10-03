@@ -877,6 +877,68 @@ class RoostooAutonomousBot:
                 va_pos = "INSIDE_VA"
                 va_pos_desc = "Inside Value Area (Fair Value)"
 
+            # Strategy A (Value Area) Operational Status & Readiness
+            sig_va_dir = sig_va.get("direction", "NO_TRADE")
+            dist_val_pct = ((last_px - val) / val * 100.0) if val > 0 else 0.0
+            dist_vah_pct = ((vah - last_px) / vah * 100.0) if vah > 0 else 0.0
+            if sig_va_dir == "BUY":
+                va_status = "BUY"
+                va_status_text = f"BUY ({int(sig_va.get('confidence', 0.8) * 100)}%)"
+                va_pill = "pill-live"
+            elif sig_va_dir == "DE_RISK":
+                va_status = "DE_RISK"
+                va_status_text = f"DE-RISK ({int(sig_va.get('confidence', 0.8) * 100)}%)"
+                va_pill = "pill-red"
+            elif last_px < val:
+                va_status = "ARMED"
+                va_status_text = "ARMED (VAL Breakout Watch)"
+                va_pill = "pill-purple"
+            elif abs(dist_val_pct) <= 0.6:
+                va_status = "PROXIMITY"
+                va_status_text = "PROXIMITY (Near VAL Discount)"
+                va_pill = "pill-purple"
+            elif abs(dist_vah_pct) <= 0.6:
+                va_status = "PROXIMITY"
+                va_status_text = "WATCH (Near VAH Premium)"
+                va_pill = "pill-purple"
+            else:
+                va_status = "MONITORING"
+                va_status_text = f"MONITORING ({va_pos_desc})"
+                va_pill = "pill-blue"
+
+            # Strategy B (Liquidity Sweep) Operational Status & Readiness
+            sig_ls_dir = sig_ls.get("direction", "NO_TRADE")
+            dist_sl_pct = ((last_px - latest_sl) / latest_sl * 100.0) if latest_sl > 0 else 0.0
+            dist_sh_pct = ((latest_sh - last_px) / latest_sh * 100.0) if latest_sh > 0 else 0.0
+            if sig_ls_dir == "BUY":
+                ls_status = "BUY"
+                ls_status_text = f"BUY ({int(sig_ls.get('confidence', 0.8) * 100)}%)"
+                ls_pill = "pill-live"
+            elif sig_ls_dir == "DE_RISK":
+                ls_status = "DE_RISK"
+                ls_status_text = f"DE-RISK ({int(sig_ls.get('confidence', 0.8) * 100)}%)"
+                ls_pill = "pill-red"
+            elif is_displacement:
+                ls_status = "ARMED"
+                ls_status_text = "ARMED (Displacement Active)"
+                ls_pill = "pill-purple"
+            elif abs(dist_sl_pct) <= 0.6:
+                ls_status = "PROXIMITY"
+                ls_status_text = f"SWEEP WATCH (Near Low ${latest_sl:,.0f})"
+                ls_pill = "pill-purple"
+            elif abs(dist_sh_pct) <= 0.6:
+                ls_status = "PROXIMITY"
+                ls_status_text = f"SWEEP WATCH (Near High ${latest_sh:,.0f})"
+                ls_pill = "pill-purple"
+            elif has_fvg:
+                ls_status = "MONITORING"
+                ls_status_text = "MONITORING (Active FVG Gap)"
+                ls_pill = "pill-blue"
+            else:
+                ls_status = "MONITORING"
+                ls_status_text = "MONITORING (Structure Neutral)"
+                ls_pill = "pill-blue"
+
             tracking_list.append({
                 "symbol": symbol,
                 "ticker": {
@@ -903,18 +965,24 @@ class RoostooAutonomousBot:
                     "position": va_pos,
                     "position_desc": va_pos_desc,
                     "width_pct": ((vah - val) / poc * 100.0) if poc > 0 else 0.0,
-                    "signal": sig_va.get("direction", "NO_TRADE"),
+                    "signal": sig_va_dir,
                     "confidence": sig_va.get("confidence", 0.0),
                     "reason": sig_va.get("reason", ""),
+                    "status": va_status,
+                    "status_text": va_status_text,
+                    "pill_class": va_pill,
                 },
                 "liquidity_sweep": {
                     "swing_high": latest_sh,
                     "swing_low": latest_sl,
                     "displacement": is_displacement,
                     "fvg_present": has_fvg,
-                    "signal": sig_ls.get("direction", "NO_TRADE"),
+                    "signal": sig_ls_dir,
                     "confidence": sig_ls.get("confidence", 0.0),
                     "reason": sig_ls.get("reason", ""),
+                    "status": ls_status,
+                    "status_text": ls_status_text,
+                    "pill_class": ls_pill,
                 },
                 "cvd_absorption": {
                     "delta_volume": latest_delta,

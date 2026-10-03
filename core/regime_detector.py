@@ -153,9 +153,9 @@ class RegimeDetector:
                 favored_strategies=["LIQUIDITY_SWEEP"],
             )
 
-        # Rule 4: Range-bound consolidation (low ADX, prices oscillating around VWAP/POC)
-        if adx < 22.0 and abs(vwap_zscore) < 1.8:
-            conf = min(0.95, 0.65 + (22.0 - adx) * 0.015)
+        # Rule 4: Range-bound consolidation (ADX below trend threshold, prices oscillating around VWAP/POC)
+        if adx < self.config.adx_trend_threshold and abs(vwap_zscore) < 2.0:
+            conf = min(0.95, 0.65 + (self.config.adx_trend_threshold - adx) * 0.015)
             return RegimeClassification(
                 regime=MarketRegime.RANGE,
                 confidence=conf,

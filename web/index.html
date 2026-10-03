@@ -1707,8 +1707,8 @@
                             <div class="module-box">
                                 <div class="module-header">
                                     <span class="module-title"><span>📊</span> Strategy A: Volume Profile (70% VA)</span>
-                                    <span class="pill ${va.signal === 'BUY' ? 'pill-live' : (va.signal === 'DE_RISK' ? 'pill-red' : 'pill-blue')} mono" id="va-sig-${cleanSym}">
-                                        ${va.signal} (${(va.confidence * 100).toFixed(0)}%)
+                                    <span class="pill ${va.pill_class || (va.signal === 'BUY' ? 'pill-live' : (va.signal === 'DE_RISK' ? 'pill-red' : (va.status === 'ARMED' || va.status === 'PROXIMITY' ? 'pill-purple' : 'pill-blue')))} mono" id="va-sig-${cleanSym}">
+                                        ${va.status_text || (va.signal && va.signal !== 'NO_TRADE' ? `${va.signal} (${(va.confidence * 100).toFixed(0)}%)` : 'MONITORING (Fair Value)')}
                                     </span>
                                 </div>
                                 <div class="module-grid">
@@ -1740,8 +1740,9 @@
                                         <div class="va-poc-marker" id="va-poc-${cleanSym}" style="left: ${pocPct}%;"></div>
                                         <div class="va-current-price-pin" id="va-pin-${cleanSym}" style="left: ${currentPxPct}%;" title="Current Price: $${lastPx.toFixed(2)}"></div>
                                     </div>
-                                    <div style="font-size:10px; color:var(--text-muted); text-align:center;">
-                                        Price Position: <b class="text-accent" id="va-pos-${cleanSym}">${va.position_desc || 'Inside Value Area'}</b>
+                                    <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:2px;">
+                                        <span>Position: <b class="text-accent" id="va-pos-${cleanSym}">${va.position_desc || 'Inside Value Area'}</b></span>
+                                        <span class="mono" id="va-reason-${cleanSym}">${va.reason || 'Monitoring auction balance'}</span>
                                     </div>
                                 </div>
                             </div>
@@ -1749,8 +1750,8 @@
                             <div class="module-box">
                                 <div class="module-header">
                                     <span class="module-title"><span>🎯</span> Strategy B: Liquidity Sweeps & MSS</span>
-                                    <span class="pill ${ls.signal === 'BUY' ? 'pill-live' : (ls.signal === 'DE_RISK' ? 'pill-red' : 'pill-blue')} mono" id="ls-sig-${cleanSym}">
-                                        ${ls.signal} (${(ls.confidence * 100).toFixed(0)}%)
+                                    <span class="pill ${ls.pill_class || (ls.signal === 'BUY' ? 'pill-live' : (ls.signal === 'DE_RISK' ? 'pill-red' : (ls.status === 'ARMED' || ls.status === 'PROXIMITY' ? 'pill-purple' : 'pill-blue')))} mono" id="ls-sig-${cleanSym}">
+                                        ${ls.status_text || (ls.signal && ls.signal !== 'NO_TRADE' ? `${ls.signal} (${(ls.confidence * 100).toFixed(0)}%)` : 'MONITORING (Structure Neutral)')}
                                     </span>
                                 </div>
                                 <div class="module-grid">
@@ -1771,14 +1772,18 @@
                                         <span class="stat-val mono ${ls.fvg_present ? 'text-accent' : ''}" id="fvg-${cleanSym}">${ls.fvg_present ? 'ACTIVE GAP' : 'FILLED'}</span>
                                     </div>
                                 </div>
+                                <div style="font-size:10px; color:var(--text-dim); margin-top:6px; display:flex; justify-content:space-between;" class="mono">
+                                    <span id="ls-reason-${cleanSym}">${ls.reason || 'Scanning structural swing points...'}</span>
+                                    <span class="text-accent" id="ls-prox-${cleanSym}">Range: $${Math.max(0, (ls.swing_high || 0) - (ls.swing_low || 0)).toFixed(0)}</span>
+                                </div>
                             </div>
 
                             <div class="actionable-signal">
                                 <div class="signal-decision">
                                     <div style="font-size:10px; color:var(--text-dim); font-weight:600; text-transform:uppercase;">Strategy Engine Decision:</div>
                                     <div style="display:flex; align-items:center; gap:8px;">
-                                        <span class="signal-badge-lg ${sigBadgeClass} mono" id="sig-badge-${cleanSym}">${sig.direction || 'NO_TRADE'}</span>
-                                        <span style="font-size:12px; font-weight:700;" id="sig-engine-${cleanSym}">via ${sig.strategy || 'ENGINE'} (${((sig.confidence || 0) * 100).toFixed(0)}% Conf)</span>
+                                        <span class="signal-badge-lg ${sigBadgeClass} mono" id="sig-badge-${cleanSym}">${sig.direction === 'NO_TRADE' ? 'MONITORING' : sig.direction}</span>
+                                        <span style="font-size:12px; font-weight:700;" id="sig-engine-${cleanSym}">${sig.direction === 'NO_TRADE' ? 'via STRATEGY_ENGINE (Active Scan)' : `via ${sig.strategy || 'ENGINE'} (${((sig.confidence || 0) * 100).toFixed(0)}% Conf)`}</span>
                                     </div>
                                     <div style="font-size:11px; color:var(--text-muted); margin-top:2px;" id="sig-reason-${cleanSym}">
                                         ${sig.reason || 'Scanning order book microstructure for edge...'}
@@ -1858,6 +1863,15 @@
                     const vwapEl = document.getElementById(`vwap-${cleanSym}`);
                     if (vwapEl) vwapEl.innerText = `$${(va.session_vwap || 0).toFixed(2)}`;
 
+                    const vaSigPill = document.getElementById(`va-sig-${cleanSym}`);
+                    if (vaSigPill) {
+                        const vaPillClass = va.pill_class || (va.signal === 'BUY' ? 'pill-live' : (va.signal === 'DE_RISK' ? 'pill-red' : (va.status === 'ARMED' || va.status === 'PROXIMITY' ? 'pill-purple' : 'pill-blue')));
+                        vaSigPill.className = `pill ${vaPillClass} mono`;
+                        vaSigPill.innerText = va.status_text || (va.signal && va.signal !== 'NO_TRADE' ? `${va.signal} (${(va.confidence * 100).toFixed(0)}%)` : 'MONITORING (Fair Value)');
+                    }
+                    const vaReasonEl = document.getElementById(`va-reason-${cleanSym}`);
+                    if (vaReasonEl) vaReasonEl.innerText = va.reason || 'Monitoring auction balance';
+
                     const vaFill = document.getElementById(`va-fill-${cleanSym}`);
                     if (vaFill) { vaFill.style.left = `${valLeftPct}%`; vaFill.style.width = `${vaWidthPct}%`; }
                     const vaPoc = document.getElementById(`va-poc-${cleanSym}`);
@@ -1867,18 +1881,42 @@
                     const vaPos = document.getElementById(`va-pos-${cleanSym}`);
                     if (vaPos) vaPos.innerText = va.position_desc || 'Inside Value Area';
 
+                    const lsSigPill = document.getElementById(`ls-sig-${cleanSym}`);
+                    if (lsSigPill) {
+                        const lsPillClass = ls.pill_class || (ls.signal === 'BUY' ? 'pill-live' : (ls.signal === 'DE_RISK' ? 'pill-red' : (ls.status === 'ARMED' || ls.status === 'PROXIMITY' ? 'pill-purple' : 'pill-blue')));
+                        lsSigPill.className = `pill ${lsPillClass} mono`;
+                        lsSigPill.innerText = ls.status_text || (ls.signal && ls.signal !== 'NO_TRADE' ? `${ls.signal} (${(ls.confidence * 100).toFixed(0)}%)` : 'MONITORING (Structure Neutral)');
+                    }
+                    const lsReasonEl = document.getElementById(`ls-reason-${cleanSym}`);
+                    if (lsReasonEl) lsReasonEl.innerText = ls.reason || 'Scanning structural swing points...';
+                    const lsProxEl = document.getElementById(`ls-prox-${cleanSym}`);
+                    if (lsProxEl) lsProxEl.innerText = `Range: $${Math.max(0, (ls.swing_high || 0) - (ls.swing_low || 0)).toFixed(0)}`;
+
                     const swhighEl = document.getElementById(`swhigh-${cleanSym}`);
                     if (swhighEl) swhighEl.innerText = `$${(ls.swing_high || 0).toFixed(2)}`;
                     const swlowEl = document.getElementById(`swlow-${cleanSym}`);
                     if (swlowEl) swlowEl.innerText = `$${(ls.swing_low || 0).toFixed(2)}`;
 
+                    const dispEl = document.getElementById(`disp-${cleanSym}`);
+                    if (dispEl) {
+                        dispEl.className = `stat-val mono ${ls.displacement ? 'text-pos' : ''}`;
+                        dispEl.innerText = ls.displacement ? 'DETECTED (>1.2 ATR)' : 'NONE';
+                    }
+                    const fvgEl = document.getElementById(`fvg-${cleanSym}`);
+                    if (fvgEl) {
+                        fvgEl.className = `stat-val mono ${ls.fvg_present ? 'text-accent' : ''}`;
+                        fvgEl.innerText = ls.fvg_present ? 'ACTIVE GAP' : 'FILLED';
+                    }
+
                     const sigBadge = document.getElementById(`sig-badge-${cleanSym}`);
                     if (sigBadge) {
                         sigBadge.className = `signal-badge-lg ${sigBadgeClass} mono`;
-                        sigBadge.innerText = sig.direction || 'NO_TRADE';
+                        sigBadge.innerText = sig.direction === 'NO_TRADE' ? 'MONITORING' : sig.direction;
                     }
                     const sigEng = document.getElementById(`sig-engine-${cleanSym}`);
-                    if (sigEng) sigEng.innerText = `via ${sig.strategy || 'ENGINE'} (${((sig.confidence || 0) * 100).toFixed(0)}% Conf)`;
+                    if (sigEng) {
+                        sigEng.innerText = sig.direction === 'NO_TRADE' ? 'via STRATEGY_ENGINE (Active Scan)' : `via ${sig.strategy || 'ENGINE'} (${((sig.confidence || 0) * 100).toFixed(0)}% Conf)`;
+                    }
                     const sigReas = document.getElementById(`sig-reason-${cleanSym}`);
                     if (sigReas) sigReas.innerText = sig.reason || 'Scanning order book microstructure...';
 
