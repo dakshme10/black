@@ -30,6 +30,7 @@ def mock_config(tmp_path):
     cfg.live_trading_enabled = False
     cfg.audit.audit_file = str(tmp_path / "audit.jsonl")
     cfg.audit.api_log_file = str(tmp_path / "api.jsonl")
+    cfg.audit.trade_log_file = str(tmp_path / "trade_log.csv")
     cfg.audit.enable_hash_chain = True
     return cfg
 
@@ -49,6 +50,7 @@ def audit_logger(mock_config):
     return AuditLogger(
         audit_file=mock_config.audit.audit_file,
         api_log_file=mock_config.audit.api_log_file,
+        trade_log_file=mock_config.audit.trade_log_file,
         enable_hash_chain=True,
     )
 

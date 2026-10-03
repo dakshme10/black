@@ -20,6 +20,7 @@ def mock_bot(tmp_path):
     config.live_trading_enabled = False
     config.audit.audit_file = str(tmp_path / "audit.jsonl")
     config.audit.api_log_file = str(tmp_path / "api_log.jsonl")
+    config.audit.trade_log_file = str(tmp_path / "trade_log.csv")
     config.web.enabled = True
     config.web.auth_token = ""
 
@@ -245,3 +246,25 @@ def test_trade_log_csv_endpoint(mock_bot):
     assert res.status_code == 200
     assert "timestamp_ist" in res.text
     assert "symbol" in res.text
+
+
+def test_logs_endpoint_and_telemetry_stream(mock_bot):
+    server = WebServer(mock_bot, port=8080)
+    client = TestClient(server.app)
+
+    # Log a system event
+    mock_bot.logger.log_system_event("UNIT_TEST_EVENT", "Testing log streaming endpoint")
+
+    res = client.get("/api/logs")
+    assert res.status_code == 200
+    logs = res.json()
+    assert isinstance(logs, list)
+    assert len(logs) > 0
+    assert any("UNIT_TEST_EVENT" in l.get("event", "") for l in logs)
+
+    # Check status endpoint includes logs
+    res_status = client.get("/api/status")
+    assert res_status.status_code == 200
+    data = res_status.json()
+    assert "logs" in data
+    assert len(data["logs"]) > 0

@@ -160,12 +160,17 @@ class RiskManager:
                     reason=f"Rejected: No active position to de-risk for {signal.symbol}",
                 )
 
-            # Check if this is a partial exit (e.g. TP1 at 50%)
-            exit_ratio = float(signal.metadata.get("exit_ratio", 1.0))
-            if 0.0 < exit_ratio < 1.0:
-                qty = current_pos.quantity * exit_ratio
+            # Check if this is a partial exit (e.g. TP1 at 50% or custom notional)
+            req_notional = float(signal.metadata.get("notional_usd", 0.0)) if signal.metadata else 0.0
+            if req_notional > 0 and signal.entry_price > 0:
+                desired_qty = req_notional / signal.entry_price
+                qty = min(desired_qty, current_pos.quantity)
             else:
-                qty = current_pos.quantity
+                exit_ratio = float(signal.metadata.get("exit_ratio", 1.0)) if signal.metadata else 1.0
+                if 0.0 < exit_ratio < 1.0:
+                    qty = current_pos.quantity * exit_ratio
+                else:
+                    qty = current_pos.quantity
 
             return RiskDecision(
                 approved=True,
@@ -176,7 +181,7 @@ class RiskManager:
                 take_profit_2=0.0,
                 risk_capital=0.0,
                 risk_pct=0.0,
-                reason=f"De-risk signal approved ({exit_ratio * 100:.0f}% exit)",
+                reason=f"De-risk signal approved ({qty:.6f} {signal.symbol} exit)",
             )
 
         # Signal must be a BUY
@@ -280,10 +285,19 @@ class RiskManager:
         # Risk Capital = Portfolio Equity * Risk % (Default 1.0%)
         # Position Quantity = Risk Capital / abs(Entry Price - Stop Price)
         # ---------------------------------------------------------------------
-        risk_pct = min(self.max_risk_per_trade_pct, 0.015)  # Strict cap at 1.5%
-        risk_capital = equity * risk_pct
-        desired_quantity = risk_capital / stop_distance
-        desired_notional = desired_quantity * entry_px
+        req_notional = float(signal.metadata.get("notional_usd", 0.0)) if signal.metadata else 0.0
+        if req_notional > 0:
+            max_notional_by_risk = (equity * min(self.max_risk_per_trade_pct, 0.015)) / (stop_distance / entry_px)
+            actual_notional = min(req_notional, max_notional_by_risk)
+            desired_quantity = actual_notional / entry_px
+            desired_notional = desired_quantity * entry_px
+            risk_capital = desired_quantity * stop_distance
+            risk_pct = risk_capital / equity if equity > 0 else 0.0
+        else:
+            risk_pct = min(self.max_risk_per_trade_pct, 0.015)  # Strict cap at 1.5%
+            risk_capital = equity * risk_pct
+            desired_quantity = risk_capital / stop_distance
+            desired_notional = desired_quantity * entry_px
 
         # Cap 1: Available Cash after mandatory 5% cash reserve
         available_cash = self.portfolio.available_cash

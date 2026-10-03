@@ -198,6 +198,12 @@ class WebServer:
                 media_type="text/csv",
             )
 
+        @self.app.get("/api/logs")
+        async def get_logs():
+            if hasattr(self.bot, "logger") and hasattr(self.bot.logger, "get_recent_events"):
+                return JSONResponse(self.bot.logger.get_recent_events(limit=100))
+            return JSONResponse([])
+
         @self.app.get("/api/audit-trail")
         async def get_audit_trail(limit: int = 50):
             records = []
@@ -542,6 +548,7 @@ class WebServer:
             },
             "equity_curve": equity_points,
             "signal_history": getattr(self.bot, "signal_history", [])[-20:],
+            "logs": self.bot.logger.get_recent_events(limit=50) if hasattr(self.bot, "logger") and hasattr(self.bot.logger, "get_recent_events") else [],
         }
 
     async def _broadcast_loop(self):

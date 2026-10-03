@@ -210,16 +210,150 @@ class ReconciliationEngine:
 
                 self.portfolio._persist()
 
-                # 5. Check Pending Orders
-                pending_resp = self.client.query_order(pending_only=True)
-                if pending_resp.get("Success", False):
-                    ex_pending_list = pending_resp.get("OrderMatched", [])
-                    for po in ex_pending_list:
-                        ex_id = po.get("OrderID")
-                        local_match = self.order_manager.get_order_by_exchange_id(ex_id)
-                        if not local_match:
-                            unmatched_ex_orders.append(ex_id)
-                            actions.append(f"Found exchange pending order {ex_id} not in local memory; registered.")
+                # 5. Check Pending & Matched Exchange Orders (AUTHORITATIVE EXCHANGE TRUTH)
+                try:
+                    pending_resp = self.client.query_order(pending_only=True)
+                    if pending_resp.get("Success", False):
+                        ex_pending_list = pending_resp.get("OrderMatched", [])
+                        for po in ex_pending_list:
+                            ex_id = po.get("OrderID")
+                            if not ex_id:
+                                continue
+                            local_match = self.order_manager.get_order_by_exchange_id(ex_id)
+                            if not local_match:
+                                unmatched_ex_orders.append(ex_id)
+                                p_qty = float(po.get("Quantity", 0.0))
+                                p_filled = float(po.get("FilledQuantity", 0.0))
+                                p_order = Order(
+                                    client_order_id=f"EX_PEND_{ex_id}",
+                                    symbol=po.get("Pair", ""),
+                                    side=po.get("Side", "").upper(),
+                                    order_type=po.get("Type", "MARKET").upper(),
+                                    quantity=p_qty,
+                                    remaining_quantity=max(0.0, p_qty - p_filled),
+                                    filled_quantity=p_filled,
+                                    cumulative_filled_quantity=p_filled,
+                                    price=float(po.get("Price", 0.0) or 0.0),
+                                    filled_avg_price=float(po.get("FilledAverPrice", 0.0) or 0.0),
+                                    exchange_order_id=ex_id,
+                                    status=OrderStatus.PARTIALLY_FILLED if p_filled > 0 else OrderStatus.PENDING_EXCHANGE,
+                                    role=po.get("Role", "MAKER"),
+                                    strategy="EXCHANGE_PENDING_SYNC",
+                                    create_timestamp=int(po.get("CreateTimestamp", time.time() * 1000)),
+                                )
+                                self.order_manager.register_order(p_order)
+                                actions.append(f"Found exchange pending order {ex_id} [{p_order.side} {p_order.symbol}]; registered into local ledger.")
+                except Exception as e:
+                    actions.append(f"Warning: Failed to fetch pending exchange orders: {e}")
+
+                # 5b. Query recent matched & filled orders from Roostoo Mock Exchange to backfill execution history
+                try:
+                    matched_resp = self.client.query_order(pending_only=False, limit=50)
+                    if matched_resp.get("Success", False):
+                        matches = matched_resp.get("OrderMatched", [])
+                        for mo in matches:
+                            ex_id = mo.get("OrderID")
+                            if not ex_id:
+                                continue
+                            local_match = self.order_manager.get_order_by_exchange_id(ex_id)
+                            ex_status = mo.get("Status", "FILLED")
+                            filled_qty = float(mo.get("FilledQuantity", 0.0))
+                            filled_price = float(mo.get("FilledAverPrice", 0.0)) or float(mo.get("Price", 0.0) or 0.0)
+                            comm = float(mo.get("CommissionChargeValue", 0.0))
+
+                            if local_match:
+                                # Update locally tracked pending order if exchange reports terminal fill
+                                if not local_match.is_terminal and ex_status == "FILLED":
+                                    fill_delta, _ = self.order_manager.record_fill_delta(
+                                        client_order_id=local_match.client_order_id,
+                                        exchange_cumulative_filled=filled_qty,
+                                        filled_price=filled_price,
+                                        commission=comm,
+                                        role=mo.get("Role", "TAKER"),
+                                        ex_status=ex_status,
+                                        exchange_order_id=ex_id,
+                                    )
+                                    if fill_delta > 0:
+                                        self.portfolio.record_fill(
+                                            symbol=local_match.symbol,
+                                            side=local_match.side,
+                                            quantity=fill_delta,
+                                            price=filled_price,
+                                            fee=comm,
+                                        )
+                                    self.order_manager.unlock_symbol(local_match.symbol)
+                                    actions.append(f"Reconciled order fill for {local_match.client_order_id} (ex={ex_id}): FILLED {filled_qty} @ ${filled_price:,.2f}")
+                                    if self.audit_logger:
+                                        self.audit_logger.log_order_event(
+                                            event="ORDER_FILL_RECONCILED",
+                                            symbol=local_match.symbol,
+                                            side=local_match.side,
+                                            order_type=local_match.order_type,
+                                            quantity=local_match.quantity,
+                                            price=filled_price,
+                                            client_order_id=local_match.client_order_id,
+                                            exchange_order_id=ex_id,
+                                            role=mo.get("Role", "TAKER"),
+                                            status="FILLED",
+                                            filled_qty=filled_qty,
+                                            filled_price=filled_price,
+                                            commission=comm,
+                                        )
+                            else:
+                                # Order existed on exchange but not in local state (e.g. prior session or external trade)
+                                qty = float(mo.get("Quantity", 0.0)) or filled_qty
+                                if ex_status == "FILLED":
+                                    ord_status = OrderStatus.FILLED
+                                elif ex_status == "PENDING" and filled_qty > 0:
+                                    ord_status = OrderStatus.PARTIALLY_FILLED
+                                elif ex_status == "PENDING":
+                                    ord_status = OrderStatus.PENDING_EXCHANGE
+                                elif ex_status == "CANCELED":
+                                    ord_status = OrderStatus.CANCELED
+                                else:
+                                    ord_status = OrderStatus.UNKNOWN
+
+                                new_order = Order(
+                                    client_order_id=f"EX_{ex_id}",
+                                    symbol=mo.get("Pair", ""),
+                                    side=mo.get("Side", "").upper(),
+                                    order_type=mo.get("Type", "MARKET").upper(),
+                                    quantity=qty,
+                                    remaining_quantity=max(0.0, qty - filled_qty),
+                                    filled_quantity=filled_qty,
+                                    cumulative_filled_quantity=filled_qty,
+                                    price=float(mo.get("Price", 0.0) or filled_price),
+                                    filled_avg_price=filled_price,
+                                    exchange_order_id=ex_id,
+                                    status=ord_status,
+                                    role=mo.get("Role", "TAKER"),
+                                    commission=comm,
+                                    strategy="EXCHANGE_MOCK_SYNC",
+                                    create_timestamp=int(mo.get("CreateTimestamp", time.time() * 1000)),
+                                    finish_timestamp=int(mo.get("FinishTimestamp", 0)) or None,
+                                )
+                                self.order_manager.register_order(new_order)
+                                actions.append(f"Synchronized exchange order {ex_id} [{new_order.side} {new_order.symbol}] into order ledger")
+
+                                if self.audit_logger and (filled_qty > 0 or ord_status == OrderStatus.FILLED):
+                                    self.audit_logger.log_order_event(
+                                        event="EXCHANGE_MOCK_ORDER_SYNCED",
+                                        symbol=new_order.symbol,
+                                        side=new_order.side,
+                                        order_type=new_order.order_type,
+                                        quantity=qty,
+                                        price=new_order.price,
+                                        client_order_id=new_order.client_order_id,
+                                        exchange_order_id=ex_id,
+                                        role=new_order.role,
+                                        status=new_order.status.value,
+                                        filled_qty=filled_qty,
+                                        filled_price=filled_price,
+                                        commission=new_order.commission,
+                                        details={"source": "roostoo_reconciliation_sync"},
+                                    )
+                except Exception as e:
+                    actions.append(f"Warning: Failed to sync matched exchange orders: {e}")
 
             is_synced = (len(unresolved_local) == 0)
 
@@ -327,6 +461,24 @@ class ReconciliationEngine:
                         commission=commission,
                     )
 
+                    if self.audit_logger and (filled_qty > 0 or new_status == OrderStatus.FILLED):
+                        self.audit_logger.log_order_event(
+                            event="UNKNOWN_ORDER_RESOLVED_FILL" if new_status == OrderStatus.FILLED else "UNKNOWN_ORDER_RESOLVED",
+                            symbol=order.symbol,
+                            side=order.side,
+                            order_type=order.order_type,
+                            quantity=order.quantity,
+                            price=filled_price,
+                            client_order_id=order.client_order_id,
+                            exchange_order_id=ex_id,
+                            role=ex_ord.get("Role", "TAKER"),
+                            status=new_status.value,
+                            filled_qty=filled_qty,
+                            filled_price=filled_price,
+                            commission=commission,
+                            details={"previous_status": "UNKNOWN"},
+                        )
+
                     if new_status in (OrderStatus.FILLED, OrderStatus.CANCELED, OrderStatus.REJECTED):
                         self.order_manager.unlock_symbol(order.symbol)
 
@@ -340,6 +492,18 @@ class ReconciliationEngine:
                     error_msg="Order not found on exchange after timeout. Marked REJECTED.",
                 )
                 self.order_manager.unlock_symbol(order.symbol)
+                if self.audit_logger:
+                    self.audit_logger.log_order_event(
+                        event="UNKNOWN_ORDER_REJECTED",
+                        symbol=order.symbol,
+                        side=order.side,
+                        order_type=order.order_type,
+                        quantity=order.quantity,
+                        price=order.price,
+                        client_order_id=order.client_order_id,
+                        status="REJECTED",
+                        details={"reason": "Order not found on exchange after timeout"},
+                    )
                 return True
 
             return False

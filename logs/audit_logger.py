@@ -6,6 +6,7 @@ to guarantee audit trail integrity, verification, and tamper detection.
 
 from __future__ import annotations
 
+from collections import deque
 import csv
 import hashlib
 import json
@@ -16,13 +17,13 @@ import threading
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class AuditLogger:
     """
     Append-only structured audit logger with sequence numbering and SHA-256 hash chaining.
-    Also maintains a dedicated CSV trade execution log (trade_log.csv).
+    Also maintains a dedicated CSV trade execution log (trade_log.csv) and in-memory event stream.
     """
 
     def __init__(
@@ -38,6 +39,7 @@ class AuditLogger:
         self.trade_log_file = Path(trade_log_file)
         self.enable_hash_chain = enable_hash_chain
         self._lock = threading.Lock()
+        self._recent_events: deque = deque(maxlen=200)
 
         # Ensure directories exist
         self.audit_file.parent.mkdir(parents=True, exist_ok=True)
@@ -253,7 +255,52 @@ class AuditLogger:
             with open(self.audit_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record) + "\n")
 
+            # Store recent event in ring buffer for real-time console streaming
+            ist = timezone(timedelta(hours=5, minutes=30))
+            now_ist = datetime.now(timezone.utc).astimezone(ist)
+            entry = {
+                "seq": self._seq,
+                "timestamp_iso": now_iso,
+                "timestamp_ist": now_ist.strftime("%Y-%m-%d %H:%M:%S IST"),
+                "record_type": record_type,
+                "event": sanitized_payload.get("event") or sanitized_payload.get("event_type") or record_type,
+                "message": self._format_summary_message(record_type, sanitized_payload),
+                "data": sanitized_payload,
+            }
+            self._recent_events.append(entry)
+
             return record
+
+    def _format_summary_message(self, record_type: str, data: Dict[str, Any]) -> str:
+        """Create a compact, human-readable summary for console stream."""
+        if record_type == "ORDER_EVENT":
+            ev = data.get("event", "")
+            side = data.get("side", "")
+            sym = data.get("symbol", "")
+            qty = data.get("quantity", 0)
+            px = data.get("price", 0)
+            f_qty = data.get("filled_qty", 0)
+            f_px = data.get("filled_price", 0)
+            stat = data.get("status", "")
+            oid = data.get("exchange_order_id") or data.get("client_order_id", "")
+            if f_qty > 0 or stat == "FILLED":
+                return f"{ev} [{side} {sym}]: filled {f_qty} @ ${f_px:,.2f} | status={stat} (id={oid})"
+            return f"{ev} [{side} {sym}]: qty={qty} px=${px:,.2f} | status={stat} (id={oid})"
+        elif record_type == "DECISION":
+            return f"[{data.get('action', '')} {data.get('symbol', '')}] Strategy={data.get('strategy', '')} size={data.get('size', 0)} px=${data.get('price', 0):,.2f} | {data.get('reason', '')}"
+        elif record_type == "CIRCUIT_BREAKER":
+            return f"[{data.get('breaker_type', '')}] {data.get('reason', '')} -> Action={data.get('action', '')}"
+        elif record_type == "RECONCILIATION":
+            return f"Exchange Reconciled: Synced={data.get('is_synchronized', False)} CashDiff=${data.get('cash_discrepancy', 0):.2f} Actions={len(data.get('actions_taken', []))}"
+        elif record_type == "SYSTEM_EVENT":
+            return f"[{data.get('event_type', '')}] {data.get('message', '')}"
+        return str(data)
+
+    def get_recent_events(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Retrieve recent events from in-memory ring buffer (newest first)."""
+        with self._lock:
+            items = list(self._recent_events)
+            return items[-limit:]
 
     def log_decision(
         self,

@@ -879,10 +879,10 @@
                 <span>📝</span> Execution & Orders <span class="tab-badge" id="tab-badge-orders">0</span>
             </button>
             <button class="tab-btn" onclick="switchTab('audit')">
-                <span>🛡️</span> Cryptographic Audit Trail
+                <span>🛡️</span> Cryptographic Audit Trail <span class="tab-badge" id="tab-badge-audit">0</span>
             </button>
             <button class="tab-btn" onclick="switchTab('telemetry')">
-                <span>⚡</span> Telemetry & Logs
+                <span>⚡</span> Telemetry & Logs <span class="tab-badge" id="tab-badge-logs">0</span>
             </button>
         </div>
         <div style="font-size: 11px; color: var(--text-dim);" class="mono">
@@ -1558,19 +1558,22 @@
             }
 
             // 3. Strategy Microstructure Grid (Tab 1)
-            renderStrategyTracking(data.tracking || []);
+            try { renderStrategyTracking(data.tracking || []); } catch (e) { console.error('Error in renderStrategyTracking:', e); }
 
             // 3b. Real-Time Market Ticks Tape (Tab 1)
-            updateTickTape(data.ticks || [], data.tracking || []);
+            try { updateTickTape(data.ticks || [], data.tracking || []); } catch (e) { console.error('Error in updateTickTape:', e); }
 
             // 4. Positions Table (Tab 2)
-            renderPositionsTable(data.positions || []);
+            try { renderPositionsTable(data.positions || []); } catch (e) { console.error('Error in renderPositionsTable:', e); }
 
             // 5. Orders Ledger (Tab 3)
-            renderOrdersTable(data.orders || []);
+            try { renderOrdersTable(data.orders || []); } catch (e) { console.error('Error in renderOrdersTable:', e); }
 
             // 6. Audit Trail (Tab 4)
-            renderAuditTrail(data.audit || {});
+            try { renderAuditTrail(data.audit || {}); } catch (e) { console.error('Error in renderAuditTrail:', e); }
+
+            // 6b. Bot Execution Stream (Tab 5)
+            try { renderLogs(data.logs || []); } catch (e) { console.error('Error in renderLogs:', e); }
 
             // 7. Footer Tickers
             const tracking = data.tracking || [];
@@ -2069,45 +2072,134 @@
 
         // Render Audit Trail (Tab 4)
         function renderAuditTrail(audit) {
-            const tbody = document.getElementById('audit-tbody');
-            const records = audit.records || [];
-            if (!records || records.length === 0) {
-                tbody.innerHTML = `
+            try {
+                const tbody = document.getElementById('audit-tbody');
+                if (!tbody) return;
+                const records = audit ? (audit.records || []) : [];
+                const totalCount = audit ? (audit.total_records !== undefined ? audit.total_records : records.length) : records.length;
+                const badgeEl = document.getElementById('tab-badge-audit');
+                if (badgeEl) badgeEl.innerText = totalCount;
+
+                if (!records || records.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="7" style="text-align:center; color:var(--text-dim); padding: 30px;">
+                                No audit records generated yet.
+                            </td>
+                        </tr>`;
+                    return;
+                }
+
+                let html = '';
+                records.forEach(r => {
+                    const seq = r.seq !== undefined ? r.seq : (r.sequence_id !== undefined ? r.sequence_id : 0);
+                    const ts = r.timestamp_iso || (r.timestamp_ms ? new Date(r.timestamp_ms).toISOString().replace('T', ' ').substring(0, 19) : (r.timestamp || '--'));
+                    const currHashFull = r.curr_hash || r.current_hash || '';
+                    const prevHashFull = r.prev_hash || r.previous_hash || '';
+                    const currHash = currHashFull ? `${currHashFull.substring(0, 12)}...` : 'N/A';
+                    const prevHash = prevHashFull ? (prevHashFull.startsWith('000000') ? 'GENESIS' : `${prevHashFull.substring(0, 12)}...`) : 'GENESIS';
+
+                    const rawType = r.event || r.event_type || r.record_type || 'SYSTEM';
+                    const eventType = String(rawType);
+                    const evUpper = eventType.toUpperCase();
+                    let tagClass = 'pill-blue';
+                    if (evUpper.includes('ORDER') || evUpper.includes('FILL') || evUpper.includes('TRADE')) tagClass = 'pill-live';
+                    else if (evUpper.includes('KILL') || evUpper.includes('CIRCUIT') || evUpper.includes('REJECT') || evUpper.includes('VETO')) tagClass = 'pill-red';
+                    else if (evUpper.includes('RISK') || evUpper.includes('DECISION')) tagClass = 'pill-purple';
+                    else if (evUpper.includes('RECON')) tagClass = 'pill-dry';
+
+                    let detailText = r.message || r.action_taken || '';
+                    if (!detailText) {
+                        if (r.details) detailText = typeof r.details === 'object' ? JSON.stringify(r.details) : String(r.details);
+                        else if (r.metadata) detailText = typeof r.metadata === 'object' ? JSON.stringify(r.metadata) : String(r.metadata);
+                        else if (r.payload) detailText = typeof r.payload === 'object' ? JSON.stringify(r.payload) : String(r.payload);
+                        else {
+                            const copy = Object.assign({}, r);
+                            delete copy.seq; delete copy.curr_hash; delete copy.prev_hash;
+                            delete copy.timestamp_iso; delete copy.timestamp_ms; delete copy.record_type;
+                            detailText = JSON.stringify(copy);
+                        }
+                    }
+
+                    const safeTitle = detailText.replace(/"/g, '&quot;');
+                    html += `
                     <tr>
-                        <td colspan="7" style="text-align:center; color:var(--text-dim); padding: 30px;">
-                            No audit records generated.
-                        </td>
+                        <td class="mono text-dim">#${seq}</td>
+                        <td class="mono text-dim" style="font-size:11px;">${ts}</td>
+                        <td><span class="pill ${tagClass} mono" style="font-size:10px;">${eventType}</span></td>
+                        <td style="max-width:320px; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${safeTitle}">${detailText}</td>
+                        <td class="mono text-accent" title="${currHashFull}">${currHash}</td>
+                        <td class="mono text-dim" title="${prevHashFull}">${prevHash}</td>
+                        <td><span class="text-pos">🔗 Verified</span></td>
                     </tr>`;
-                return;
+                });
+                tbody.innerHTML = html;
+            } catch (err) {
+                console.error("Error rendering audit trail:", err);
             }
+        }
 
-            let html = '';
-            records.forEach(r => {
-                const ts = r.timestamp_iso || (r.timestamp ? new Date(r.timestamp).toISOString() : '--');
-                const currHash = r.current_hash ? `${r.current_hash.substring(0, 12)}...` : 'N/A';
-                const prevHash = r.previous_hash ? `${r.previous_hash.substring(0, 12)}...` : 'GENESIS';
+        // Render Bot Execution Stream (Tab 5)
+        let lastRenderedLogKey = "";
+        function renderLogs(logs) {
+            try {
+                const container = document.getElementById('console-stream');
+                if (!container) return;
+                const list = logs || [];
+                const badgeEl = document.getElementById('tab-badge-logs');
+                if (badgeEl) badgeEl.innerText = list.length;
 
-                let tagClass = 'pill-blue';
-                if (r.event_type.includes('ORDER')) tagClass = 'pill-live';
-                else if (r.event_type.includes('KILL') || r.event_type.includes('CIRCUIT')) tagClass = 'pill-red';
-                else if (r.event_type.includes('RISK')) tagClass = 'pill-purple';
+                if (list.length === 0) {
+                    if (container.children.length <= 1) {
+                        container.innerHTML = `
+                            <div class="log-entry">
+                                <span class="log-ts">[SYSTEM]</span>
+                                <span class="log-tag info">STANDBY</span>
+                                <span>Roostoo Autonomous Quant Bot connected. Streaming execution events...</span>
+                            </div>`;
+                    }
+                    return;
+                }
 
-                html += `
-                <tr>
-                    <td class="mono text-dim">#${r.sequence_id || 0}</td>
-                    <td class="mono text-dim" style="font-size:11px;">${ts}</td>
-                    <td><span class="pill ${tagClass} mono" style="font-size:10px;">${r.event_type}</span></td>
-                    <td style="max-width:300px; font-size:11px;">${r.details || JSON.stringify(r.payload || {})}</td>
-                    <td class="mono text-accent" title="${r.current_hash}">${currHash}</td>
-                    <td class="mono text-dim" title="${r.previous_hash}">${prevHash}</td>
-                    <td><span class="text-pos">🔗 Verified</span></td>
-                </tr>`;
-            });
-            tbody.innerHTML = html;
+                // Check latest log sequence or timestamp
+                const lastItem = list[list.length - 1];
+                const currentKey = `${list.length}_${lastItem.seq || lastItem.timestamp_iso || ''}`;
+                if (currentKey === lastRenderedLogKey) return;
+                lastRenderedLogKey = currentKey;
+
+                let html = '';
+                list.forEach(l => {
+                    const ts = l.timestamp_ist ? l.timestamp_ist.replace(' IST', '') : (l.timestamp_iso ? l.timestamp_iso.substring(11, 19) : '--');
+                    let tagClass = 'info';
+                    const ev = String(l.event || l.record_type || 'INFO').toUpperCase();
+                    if (ev.includes('ORDER') || ev.includes('FILL') || ev.includes('TRADE')) tagClass = 'success';
+                    else if (ev.includes('ERROR') || ev.includes('KILL') || ev.includes('VETO') || ev.includes('CIRCUIT') || ev.includes('REJECT')) tagClass = 'error';
+                    else if (ev.includes('RECON') || ev.includes('WARN')) tagClass = 'warn';
+                    else if (ev.includes('DECISION') || ev.includes('SIGNAL')) tagClass = 'info';
+
+                    const msg = l.message || (typeof l.data === 'object' ? JSON.stringify(l.data) : String(l.data || ''));
+                    html += `
+                    <div class="log-entry">
+                        <span class="log-ts">[${ts}]</span>
+                        <span class="log-tag ${tagClass}">${ev}</span>
+                        <span>${msg}</span>
+                    </div>`;
+                });
+                container.innerHTML = html;
+                container.scrollTop = container.scrollHeight;
+            } catch (err) {
+                console.error("Error rendering console logs:", err);
+            }
         }
 
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
+            // Immediate bootstrap fetch so panes populate before WS handshake
+            fetch('/api/status').then(r => r.json()).then(data => {
+                currentPayload = data;
+                renderTelemetry(data);
+            }).catch(() => {});
+
             connectWebSocket();
         });
     </script>

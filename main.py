@@ -732,6 +732,7 @@ class RoostooAutonomousBot:
             return {"success": False, "error": f"No ticker price available for {symbol}"}
 
         direction = "BUY" if side.upper() == "BUY" else "DE_RISK"
+        metadata = {"notional_usd": float(notional_usd)} if notional_usd > 0 else {}
         sig = Signal(
             strategy="MANUAL_TRADE",
             symbol=symbol,
@@ -745,13 +746,23 @@ class RoostooAutonomousBot:
             reason="OPERATOR MANUAL TRADE VIA DASHBOARD",
             regime="",
             timestamp=int(time.time() * 1000),
+            metadata=metadata,
         )
         sym_prec = self.executor.get_symbol_precision(symbol)
         risk_decision = self.risk_manager.evaluate_signal(sig, symbol_precision=sym_prec)
         if not risk_decision.approved:
+            self.logger.log_system_event("MANUAL_TRADE_VETOED", f"Manual {side} for {symbol} vetoed by Risk Manager: {risk_decision.reason}")
             return {"success": False, "error": f"Risk Manager Veto: {risk_decision.reason}"}
 
         order = self.executor.execute_decision(sig, risk_decision, curr_px)
+        if order:
+            self.last_order = order.to_dict()
+            self.logger.log_system_event(
+                "MANUAL_TRADE_EXECUTED",
+                f"Manual {side} order executed for {symbol}: qty={order.quantity} @ ${curr_px:,.2f} | status={order.status.value} (id={order.exchange_order_id or order.client_order_id})",
+            )
+            if hasattr(self, "notifier") and self.notifier and getattr(self.notifier, "enabled", False):
+                self.notifier.send_order_notification(order.to_dict())
         return {"success": True, "order": order.to_dict() if order else None}
 
     def get_strategy_tracking_data(self) -> List[Dict[str, Any]]:
