@@ -1516,10 +1516,28 @@
             document.getElementById('ft-open-pos').innerText = posCount;
 
             // Competition Score
-            document.getElementById('kpi-composite').innerText = (comp.composite_score || 0).toFixed(4);
-            document.getElementById('kpi-sortino').innerText = (comp.sortino_ratio || 0).toFixed(2);
-            document.getElementById('kpi-sharpe').innerText = (comp.sharpe_ratio || 0).toFixed(2);
-            document.getElementById('kpi-calmar').innerText = (comp.calmar_ratio || 0).toFixed(2);
+            const compScore = comp.composite_score;
+            const compEl = document.getElementById('kpi-composite');
+            if (compScore != null) {
+                compEl.innerText = (compScore > 0 ? '+' : '') + compScore.toFixed(4);
+                compEl.className = 'kpi-value mono ' + (compScore > 0 ? 'text-accent' : (compScore < 0 ? 'text-neg' : 'text-accent'));
+            } else {
+                compEl.innerText = '0.0000';
+            }
+            const sortinoEl = document.getElementById('kpi-sortino');
+            const sortinoVal = comp.sortino_ratio;
+            sortinoEl.innerText = (sortinoVal != null) ? ((sortinoVal > 0 ? '+' : '') + sortinoVal.toFixed(2)) : '0.00';
+            sortinoEl.className = (sortinoVal > 0 ? 'text-pos' : (sortinoVal < 0 ? 'text-neg' : ''));
+
+            const sharpeEl = document.getElementById('kpi-sharpe');
+            const sharpeVal = comp.sharpe_ratio;
+            sharpeEl.innerText = (sharpeVal != null) ? ((sharpeVal > 0 ? '+' : '') + sharpeVal.toFixed(2)) : '0.00';
+            sharpeEl.className = (sharpeVal > 0 ? 'text-pos' : (sharpeVal < 0 ? 'text-neg' : ''));
+
+            const calmarEl = document.getElementById('kpi-calmar');
+            const calmarVal = comp.calmar_ratio;
+            calmarEl.innerText = (calmarVal != null) ? ((calmarVal > 0 ? '+' : '') + calmarVal.toFixed(2)) : '0.00';
+            calmarEl.className = (calmarVal > 0 ? 'text-pos' : (calmarVal < 0 ? 'text-neg' : ''));
 
             // Drawdowns & Breakers
             const curDd = port.current_drawdown_pct || 0;

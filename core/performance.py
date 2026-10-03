@@ -65,6 +65,7 @@ class PerformanceEngine:
         completed_trades: Optional[List[Dict[str, Any]]] = None,
         risk_free_rate: float = 0.0,
         periods_per_year: float = 365.0 * 24.0 * 12.0,  # 5-minute periods per year (105,120)
+        peak_equity: Optional[float] = None,
     ) -> PerformanceMetrics:
         """
         Compute full statistical and competition metrics from the equity curve.
@@ -88,8 +89,17 @@ class PerformanceEngine:
                 total_fees=0.0,
             )
 
-        equities = np.array([s.equity for s in equity_snapshots], dtype=float)
-        timestamps = np.array([s.timestamp_ms for s in equity_snapshots], dtype=float)
+        eq_list = [s.equity for s in equity_snapshots]
+        ts_list = [s.timestamp_ms for s in equity_snapshots]
+
+        # Anchor inception capital at baseline if not present
+        if abs(eq_list[0] - initial_capital) > 1e-4:
+            t0 = max(0, ts_list[0] - 300000)
+            eq_list.insert(0, initial_capital)
+            ts_list.insert(0, t0)
+
+        equities = np.array(eq_list, dtype=float)
+        timestamps = np.array(ts_list, dtype=float)
 
         curr_equity = equities[-1]
         total_return = (curr_equity - initial_capital) / initial_capital
@@ -120,11 +130,41 @@ class PerformanceEngine:
         running_max = np.maximum.accumulate(equities)
         drawdowns = (running_max - equities) / np.maximum(running_max, 1e-6)
         max_drawdown = float(np.max(drawdowns)) if len(drawdowns) > 0 else 0.0
+        if peak_equity is not None and peak_equity > 0:
+            peak_dd = max(0.0, (peak_equity - curr_equity) / peak_equity)
+            max_drawdown = max(max_drawdown, peak_dd)
 
         # Risk-adjusted ratios
-        sharpe = (cagr - risk_free_rate) / ann_vol if ann_vol > 1e-6 else 0.0
-        sortino = (cagr - risk_free_rate) / downside_dev if downside_dev > 1e-6 else 0.0
-        calmar = cagr / max_drawdown if max_drawdown > 1e-6 else (cagr / 0.001 if cagr > 0 else 0.0)
+        excess_return = cagr - risk_free_rate
+        if ann_vol > 1e-6:
+            sharpe = excess_return / ann_vol
+        elif excess_return > 0:
+            sharpe = excess_return / 0.001
+        elif excess_return < 0:
+            effective_vol = max(abs(total_return), 0.001)
+            sharpe = excess_return / effective_vol
+        else:
+            sharpe = 0.0
+
+        if downside_dev > 1e-6:
+            sortino = excess_return / downside_dev
+        elif excess_return > 0:
+            sortino = excess_return / 0.001
+        elif excess_return < 0:
+            effective_dev = max(ann_vol, abs(total_return), 0.001)
+            sortino = excess_return / effective_dev
+        else:
+            sortino = 0.0
+
+        if max_drawdown > 1e-6:
+            calmar = cagr / max_drawdown
+        elif cagr > 0:
+            calmar = cagr / 0.001
+        elif cagr < 0:
+            effective_dd = max(abs(total_return), 0.001)
+            calmar = cagr / effective_dd
+        else:
+            calmar = 0.0
 
         # Clip extreme outliers for stability
         sharpe = float(np.clip(sharpe, -10.0, 20.0))

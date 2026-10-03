@@ -241,14 +241,24 @@ class PortfolioTracker:
     def update_mark_prices(self, mark_prices: Dict[str, float]) -> None:
         """Update current market prices and recompute unrealized PnL."""
         with self._lock:
+            changed = False
             for sym, pos in self.positions.items():
                 if sym in mark_prices and mark_prices[sym] > 0:
                     px = mark_prices[sym]
+                    if abs(pos.current_price - px) > 1e-4:
+                        changed = True
                     pos.current_price = px
                     pos.highest_price = max(pos.highest_price, px)
                     pos.unrealized_pnl = pos.quantity * (px - pos.entry_price)
-            self._record_snapshot()
-            self._persist()
+
+            now_ms = int(time.time() * 1000)
+            last_snap_ts = self.equity_curve[-1].timestamp_ms if self.equity_curve else 0
+            time_elapsed_ms = now_ms - last_snap_ts
+
+            # Throttle snapshots when idle: record if equity changed or at least 60s elapsed
+            if changed or not self.equity_curve or time_elapsed_ms >= 60000:
+                self._record_snapshot()
+                self._persist()
 
     def record_fill(
         self,
@@ -409,13 +419,21 @@ class PortfolioTracker:
             cumulative_fees=self.cumulative_fees,
         )
         self.equity_curve.append(snap)
-        # Limit in-memory snapshots to 10,000 points
+        # Limit in-memory snapshots to 10,000 points, preserving inception snapshot at index 0
         if len(self.equity_curve) > 10000:
-            self.equity_curve.pop(0)
+            self.equity_curve.pop(1)
 
     def _persist(self) -> None:
         """Save state atomically."""
         try:
+            # Preserve inception snapshot and latest 2,000 snapshots
+            persisted_snaps = []
+            if self.equity_curve:
+                if len(self.equity_curve) <= 2000:
+                    persisted_snaps = [asdict(s) for s in self.equity_curve]
+                else:
+                    persisted_snaps = [asdict(self.equity_curve[0])] + [asdict(s) for s in self.equity_curve[-2000:]]
+
             data = {
                 "state_version": 2,
                 "initial_capital": self.initial_capital,
@@ -426,7 +444,7 @@ class PortfolioTracker:
                 "cumulative_fees": self.cumulative_fees,
                 "cumulative_turnover": self.cumulative_turnover,
                 "peak_equity": self.peak_equity,
-                "equity_curve": [asdict(s) for s in self.equity_curve[-500:]],
+                "equity_curve": persisted_snaps,
             }
             tmp_file = self.persistence_file.with_suffix(".tmp")
             with open(tmp_file, "w", encoding="utf-8") as f:

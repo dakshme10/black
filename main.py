@@ -558,9 +558,24 @@ class RoostooAutonomousBot:
         daily_pnl = self.portfolio.realized_pnl + sum(p.unrealized_pnl for p in self.portfolio.positions.values())
 
         # Calculate live metrics
+        completed_trades = []
+        try:
+            if hasattr(self, "order_manager"):
+                filled_orders = [o for o in self.order_manager.get_history(limit=500) if getattr(o, "status", None) and o.status.value == "FILLED"]
+                for o in filled_orders:
+                    if o.side.upper() == "SELL" and o.filled_quantity > 0:
+                        completed_trades.append({
+                            "pnl": getattr(o, "realized_pnl", 0.0),
+                            "fee": getattr(o, "commission", 0.0),
+                        })
+        except Exception:
+            pass
+
         metrics = PerformanceEngine.calculate_metrics(
             equity_snapshots=self.portfolio.equity_curve,
             initial_capital=self.config.portfolio.initial_capital,
+            completed_trades=completed_trades if completed_trades else None,
+            peak_equity=self.portfolio.peak_equity,
         )
 
         dashboard = (

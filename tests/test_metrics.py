@@ -89,3 +89,32 @@ def test_trade_expectancy_and_profit_factor():
     assert pytest.approx(metrics.profit_factor, rel=1e-2) == 2.67
     # Expectancy = (500 - 200 + 300 - 100) / 4 = 125.0
     assert pytest.approx(metrics.expectancy, rel=1e-2) == 125.0
+
+
+def test_metrics_inception_anchor_and_peak_equity():
+    """Verify that flat equity snapshots anchor to initial_capital and reflect peak_equity drawdown."""
+    t0 = 1790990000000
+    # Simulate snapshots starting at 49,000 when initial capital was 50,000
+    snapshots = [
+        EquitySnapshot(
+            timestamp_ms=t0 + i * 2000,
+            equity=49000.0,
+            cash=49000.0,
+            gross_exposure=0.0,
+            unrealized_pnl=0.0,
+            realized_pnl=-1000.0,
+            cumulative_fees=50.0,
+        )
+        for i in range(20)
+    ]
+
+    # Without peak_equity override: max_drawdown is (50000 - 49000) / 50000 = 2.0%
+    metrics = PerformanceEngine.calculate_metrics(snapshots, initial_capital=50000.0)
+    assert pytest.approx(metrics.total_return_pct, rel=1e-3) == -2.0
+    assert pytest.approx(metrics.max_drawdown_pct, rel=1e-3) == 2.0
+    assert metrics.composite_score < 0.0  # Must be negative, not 0.0000!
+
+    # With historical peak_equity = 51,000: drawdown from peak = (51000 - 49000) / 51000 = 3.92%
+    metrics_peak = PerformanceEngine.calculate_metrics(snapshots, initial_capital=50000.0, peak_equity=51000.0)
+    assert pytest.approx(metrics_peak.max_drawdown_pct, rel=1e-2) == 3.92
+
