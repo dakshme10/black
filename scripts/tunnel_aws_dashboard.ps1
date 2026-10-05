@@ -50,12 +50,16 @@ Write-Host ""
 # Auto-open browser after 2 seconds
 Start-Job -ScriptBlock { param($port) Start-Sleep -Seconds 2; Start-Process "http://localhost:$port" } -ArgumentList $LocalPort | Out-Null
 
+$paramFile = Join-Path $env:TEMP "ssm_pf_$LocalPort.json"
+$paramJson = '{"portNumber":["' + $RemotePort + '"],"localPortNumber":["' + $LocalPort + '"]}'
+[System.IO.File]::WriteAllText($paramFile, $paramJson)
+
 while ($true) {
     aws ssm start-session `
         --region $Region `
         --target $InstanceId `
         --document-name AWS-StartPortForwardingSession `
-        --parameters "portNumber=[`"$RemotePort`"],localPortNumber=[`"$LocalPort`"]"
+        --parameters "file://$($paramFile.Replace('\', '/'))"
 
     Write-Host "`n[*] Session closed or timed out due to inactivity." -ForegroundColor Yellow
     Write-Host "[+] Re-establishing port forward in 3 seconds... (Press Ctrl+C to terminate)" -ForegroundColor Cyan
