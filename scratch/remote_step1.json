@@ -1,0 +1,5 @@
+{
+  "command": [
+    "bash -c 'cd /home/ssm-user/black && git fetch origin main && git checkout main && git reset --hard origin/main && git log -n 1 --oneline'"
+  ]
+}

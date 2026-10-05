@@ -1,0 +1,5 @@
+{
+  "command": [
+    "bash -c 'cd /home/ssm-user/black && git fetch origin main && git checkout main && git reset --hard origin/main && source venv/bin/activate && pytest -q tests/ && (curl -s -X POST http://localhost:8080/command/shutdown || true) && sleep 3 && tmux kill-session -t btceth 2>/dev/null || true && pkill -f \"python.*main.py\" 2>/dev/null || true && sleep 2 && tmux new-session -d -s btceth \"cd /home/ssm-user/black && source venv/bin/activate && python main.py --live\" && sleep 5 && tmux capture-pane -t btceth -p | tail -n 25'"
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "command": [
+    "bash -c 'cd /home/ssm-user/black && git diff --stat HEAD origin/main'"
+  ]
+}

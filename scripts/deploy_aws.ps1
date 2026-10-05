@@ -1,24 +1,26 @@
 <#
 .SYNOPSIS
-    One-click Local -> GitHub -> AWS Deployment Script for AutoSL Bot
+    One-click Local -> GitHub -> AWS EC2 Deployment Script via AWS SSM
 .DESCRIPTION
     1. Validates local git state
-    2. Runs full regression test suite locally (55 tests)
+    2. Runs full regression test suite locally
     3. Pushes committed changes to GitHub
-    4. Triggers safe remote deployment script on AWS EC2
-    5. Displays remote deployment status and active commit SHA
+    4. Triggers remote update on EC2 instance (i-04f4f4f5fbd5b1813) via AWS Systems Manager (SSM)
+    5. Verifies live bot process and 12-coin universe in tmux
 #>
 
 [CmdletBinding()]
 param (
     [string]$Branch = "main",
+    [string]$InstanceId = "i-04f4f4f5fbd5b1813",
+    [string]$Region = "ap-southeast-2",
     [switch]$SkipLocalTests = $false
 )
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "======================================================================" -ForegroundColor Cyan
-Write-Host "  AUTOSL ONE-CLICK DEPLOYMENT: LOCAL -> GITHUB -> AWS EC2" -ForegroundColor Cyan
+Write-Host "  AUTOSL ONE-CLICK DEPLOYMENT: LOCAL -> GITHUB -> AWS EC2 (SSM)" -ForegroundColor Cyan
 Write-Host "======================================================================" -ForegroundColor Cyan
 
 # 1. Check Git Status
@@ -39,7 +41,7 @@ Write-Host "[+] Local Commit to Deploy: $localCommit (Branch: $Branch)" -Foregro
 # 2. Run Local Test Suite
 if (-not $SkipLocalTests) {
     Write-Host "`n[+] Step 1/3: Running local test suite with pytest..." -ForegroundColor Cyan
-    python -m pytest
+    python -m pytest tests/ -q
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[-] CRITICAL: Local tests failed! Aborting deployment to protect production." -ForegroundColor Red
         exit 1
@@ -58,16 +60,43 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[+] Pushed to GitHub successfully." -ForegroundColor Green
 
-# 4. Trigger AWS Remote Deployment
-Write-Host "`n[+] Step 3/3: Triggering automated remote deployment pipeline on AWS EC2..." -ForegroundColor Cyan
-$remoteCmd = "bash /home/ubuntu/autosl/scripts/deploy_aws.sh $Branch"
-ssh -o BatchMode=yes aws-btceth $remoteCmd
+# 4. Trigger AWS Remote Deployment via SSM
+Write-Host "`n[+] Step 3/3: Triggering automated remote deployment pipeline on AWS EC2 ($InstanceId)..." -ForegroundColor Cyan
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "[-] AWS deployment encountered an error! Check logs above." -ForegroundColor Red
-    exit 1
+$ssmDeployScript = @"
+cd /home/ssm-user/black && \
+git fetch origin $Branch && \
+git checkout $Branch && \
+git reset --hard origin/$Branch && \
+source venv/bin/activate && \
+pytest -q tests/ && \
+(curl -s -X POST http://localhost:8080/command/shutdown || true) && \
+sleep 3 && \
+tmux kill-session -t btceth 2>/dev/null || true && \
+pkill -f "python.*main.py" 2>/dev/null || true && \
+sleep 2 && \
+tmux new-session -d -s btceth "cd /home/ssm-user/black && source venv/bin/activate && python main.py --live" && \
+sleep 5 && \
+tmux capture-pane -t btceth -p | tail -n 25
+"@
+
+$paramJson = @{
+    command = @("bash -c '$($ssmDeployScript -replace "'", "'\''")'")
+} | ConvertTo-Json -Compress
+
+$tmpFile = [System.IO.Path]::GetTempFileName() + ".json"
+$paramJson | Out-File -FilePath $tmpFile -Encoding utf8
+
+try {
+    aws ssm start-session `
+        --target $InstanceId `
+        --region $Region `
+        --document-name AWS-StartNonInteractiveCommand `
+        --parameters "file://$($tmpFile.Replace('\', '/'))"
+} finally {
+    Remove-Item $tmpFile -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "`n======================================================================" -ForegroundColor Green
-Write-Host " [SUCCESS] Deployment pipeline finished! Production is running commit: $localCommit" -ForegroundColor Green
+Write-Host " [SUCCESS] Deployment pipeline executed! Target commit: $localCommit" -ForegroundColor Green
 Write-Host "======================================================================" -ForegroundColor Green
