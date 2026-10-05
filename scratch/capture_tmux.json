@@ -1,0 +1,5 @@
+{
+  "command": [
+    "bash -c 'tmux capture-pane -t btceth -p | tail -n 35'"
+  ]
+}

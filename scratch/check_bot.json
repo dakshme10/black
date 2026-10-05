@@ -1,0 +1,5 @@
+{
+  "command": [
+    "bash -c 'ps -ef | grep python; ls -la /home/ssm-user/black/logs; tail -n 30 /home/ssm-user/black/logs/roostoo.log 2>/dev/null || true'"
+  ]
+}

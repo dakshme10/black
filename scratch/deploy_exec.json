@@ -1,0 +1,5 @@
+{
+  "command": [
+    "bash -c 'LOG=/home/ssm-user/deploy.log\necho \"[1] Starting deployment at $(date)\" > \"$LOG\"\ncd /home/ssm-user/black >> \"$LOG\" 2>&1\necho \"[2] Fetching origin main...\" >> \"$LOG\"\ngit fetch origin main >> \"$LOG\" 2>&1\necho \"[3] Resetting to origin/main...\" >> \"$LOG\"\ngit checkout main >> \"$LOG\" 2>&1\ngit reset --hard origin/main >> \"$LOG\" 2>&1\necho \"[4] Commit: $(git rev-parse --short=8 HEAD)\" >> \"$LOG\"\necho \"[5] Running pytest...\" >> \"$LOG\"\nsource venv/bin/activate >> \"$LOG\" 2>&1\npytest -q tests/ >> \"$LOG\" 2>&1\necho \"[6] Restarting bot...\" >> \"$LOG\"\ncurl -s -X POST http://localhost:8080/command/shutdown >> \"$LOG\" 2>&1 || true\nsleep 3\ntmux kill-session -t btceth >> \"$LOG\" 2>&1 || true\npkill -f \"python.*main.py\" >> \"$LOG\" 2>&1 || true\nsleep 2\ntmux new-session -d -s btceth \"cd /home/ssm-user/black && source venv/bin/activate && python main.py --live\"\nsleep 6\necho \"[7] Tmux output:\" >> \"$LOG\"\ntmux capture-pane -t btceth -p | tail -n 25 >> \"$LOG\" 2>&1\necho \"[8] Deployment finished at $(date)\" >> \"$LOG\"\ncat \"$LOG\"\n'"
+  ]
+}

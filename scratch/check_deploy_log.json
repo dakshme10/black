@@ -1,0 +1,5 @@
+{
+  "command": [
+    "bash -c 'cat /home/ssm-user/deploy.log; echo \"=== TMUX STATUS ===\"; tmux capture-pane -t btceth -p | tail -n 25'"
+  ]
+}

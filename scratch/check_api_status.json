@@ -1,0 +1,5 @@
+{
+  "command": [
+    "bash -c 'curl -s http://localhost:8080/api/status | jq . 2>/dev/null || curl -s http://localhost:8080/api/status'"
+  ]
+}

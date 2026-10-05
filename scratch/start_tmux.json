@@ -1,0 +1,5 @@
+{
+  "command": [
+    "bash -c 'cd /home/ssm-user/black; tmux new-session -d -s btceth \"bash -c \\\"cd /home/ssm-user/black && source venv/bin/activate && python main.py --live\\\"\"; sleep 5; tmux list-sessions; tmux capture-pane -t btceth -p | tail -n 25'"
+  ]
+}
