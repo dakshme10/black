@@ -115,7 +115,7 @@ class OrderExecutor:
             if self.audit_logger:
                 self.audit_logger.log_system_event(
                     "SOFTWARE_SYNTHETIC_STOP_RATCHETED",
-                    f"{symbol} software stop ratcheted to ${new_stop_price:.2f} (Roostoo lacks native stop orders)",
+                    f"{symbol} software stop ratcheted to ${new_stop_price:.8g} (Roostoo lacks native stop orders)",
                     {"symbol": symbol, "broker_sl_price": new_stop_price}
                 )
             return True
@@ -287,7 +287,7 @@ class OrderExecutor:
             # -----------------------------------------------------------------
             if mode_str == "DRY_RUN":
                 slippage_mult = (1.0 + self.fees.slippage_pct) if side == "BUY" else (1.0 - self.fees.slippage_pct)
-                fill_price = round(price * slippage_mult, 4)
+                fill_price = round(price * slippage_mult, price_precision)
                 notional = qty * fill_price
                 fee = notional * self.fees.taker_fee_pct
 

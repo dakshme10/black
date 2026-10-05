@@ -12,6 +12,9 @@ from typing import Any, Dict, List, Optional
 import yaml
 from dotenv import load_dotenv
 
+from core.universe_manager import TARGET_UNIVERSE, canonicalize_universe
+
+
 
 @dataclass
 class ExchangeConfig:
@@ -79,9 +82,27 @@ class AutoSLConfig:
         "BTC/USD": 50.0,
         "ETH/USD": 4.0,
         "SOL/USD": 0.5,
+        "SUI/USD": 0.01,
+        "ADA/USD": 0.002,
+        "FET/USD": 0.005,
+        "ENA/USD": 0.002,
+        "STO/USD": 0.001,
+        "S/USD": 0.002,
+        "PUMP/USD": 0.00001,
+        "BONK/USD": 0.0000001,
+        "PEPE/USD": 0.00000005,
         "BTCUSDT": 50.0,
         "ETHUSDT": 4.0,
         "SOLUSDT": 0.5,
+        "SUIUSDT": 0.01,
+        "ADAUSDT": 0.002,
+        "FETUSDT": 0.005,
+        "ENAUSDT": 0.002,
+        "STOUSDT": 0.001,
+        "SUSDT": 0.002,
+        "PUMPUSDT": 0.00001,
+        "BONKUSDT": 0.0000001,
+        "PEPEUSDT": 0.00000005,
     })
     recalc_interval_seconds: float = 60.0
     min_tick_buffer: float = 0.5
@@ -122,7 +143,7 @@ class AutoSLConfig:
 
 @dataclass
 class MarketDataConfig:
-    pairs: List[str] = field(default_factory=lambda: ["BTC/USD", "ETH/USD"])
+    pairs: List[str] = field(default_factory=lambda: list(TARGET_UNIVERSE))
     poll_interval_seconds: float = 5.0
     stale_data_threshold_seconds: float = 30.0
     primary_timeframe: str = "5m"
@@ -332,8 +353,11 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
     # Populate market data
     if "market_data" in raw_cfg:
         md = raw_cfg["market_data"]
+        raw_pairs = md.get("pairs", app_cfg.market_data.pairs)
+        if isinstance(raw_pairs, list):
+            app_cfg.market_data.pairs = canonicalize_universe(raw_pairs)
         app_cfg.market_data = MarketDataConfig(
-            pairs=md.get("pairs", app_cfg.market_data.pairs),
+            pairs=app_cfg.market_data.pairs,
             poll_interval_seconds=float(md.get("poll_interval_seconds", app_cfg.market_data.poll_interval_seconds)),
             stale_data_threshold_seconds=float(md.get("stale_data_threshold_seconds", app_cfg.market_data.stale_data_threshold_seconds)),
             primary_timeframe=str(md.get("primary_timeframe", app_cfg.market_data.primary_timeframe)),
@@ -447,5 +471,12 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
 
     live_enabled_env = os.getenv("LIVE_TRADING_ENABLED", "false").lower()
     app_cfg.live_trading_enabled = live_enabled_env in ("true", "1", "yes")
+
+    # Trading pairs env override (allows running a smaller universe like BTC,ETH without modifying files)
+    pairs_env = os.getenv("TRADING_PAIRS")
+    if pairs_env:
+        custom_pairs = [p.strip() for p in pairs_env.split(",") if p.strip()]
+        if custom_pairs:
+            app_cfg.market_data.pairs = canonicalize_universe(custom_pairs)
 
     return app_cfg

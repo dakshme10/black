@@ -237,6 +237,11 @@ class WebServer:
                 "dry_run": self.bot.config.dry_run,
                 "live_trading_enabled": self.bot.config.live_trading_enabled,
                 "pairs": self.bot.config.market_data.pairs,
+                "universe": {
+                    "requested": getattr(getattr(self.bot, "universe_status", None), "requested_pairs", self.bot.config.market_data.pairs),
+                    "active": getattr(getattr(self.bot, "universe_status", None), "active_pairs", self.bot.config.market_data.pairs),
+                    "skipped": getattr(getattr(self.bot, "universe_status", None), "skipped_pairs", {}),
+                },
                 "initial_capital": self.bot.config.portfolio.initial_capital,
                 "min_cash_reserve_pct": self.bot.config.portfolio.min_cash_reserve_pct,
                 "max_gross_exposure_pct": self.bot.config.portfolio.max_gross_exposure_pct,
@@ -517,6 +522,11 @@ class WebServer:
                 "last_signal": self.bot.last_signal,
                 "last_order": self.bot.last_order,
                 "last_error": self.bot.last_error,
+            },
+            "universe": {
+                "requested": getattr(getattr(self.bot, "universe_status", None), "requested_pairs", self.bot.config.market_data.pairs),
+                "active": getattr(getattr(self.bot, "universe_status", None), "active_pairs", self.bot.config.market_data.pairs),
+                "skipped": getattr(getattr(self.bot, "universe_status", None), "skipped_pairs", {}),
             },
             "portfolio": {
                 "equity": equity,

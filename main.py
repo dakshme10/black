@@ -28,6 +28,7 @@ from core.performance import PerformanceEngine
 from core.regime_detector import MarketRegime, RegimeDetector
 from core.risk_manager import RiskManager
 from core.strategy_engine import Signal, StrategyEngine
+from core.universe_manager import UniverseManager, UniverseStatus
 from core.version import get_deployment_metadata, get_git_commit_sha
 from logs.audit_logger import AuditLogger
 from state.order_state import OrderStateManager
@@ -71,6 +72,10 @@ class RoostooAutonomousBot:
             min_cash_reserve_pct=config.portfolio.min_cash_reserve_pct,
             persistence_file="data/portfolio_state.json",
         )
+
+        # 4. Universe Management
+        self.universe_manager = UniverseManager()
+        self.universe_status: Optional[UniverseStatus] = None
 
         # 4. Market Data Engine
         self.market_data = MarketDataManager(
@@ -231,11 +236,43 @@ class RoostooAutonomousBot:
             self.logger.log_system_event("STARTUP_FAILURE", f"Safety gate rejected live trading: {gate_msg}")
             return False
 
+        # Resolve Trading Universe against exchange metadata (TradePairs)
+        exchange_info = {}
+        try:
+            exchange_info_resp = self.client.get_exchange_info()
+            exchange_info = exchange_info_resp.get("TradePairs", {})
+        except Exception as e:
+            self.logger.log_system_event("EXCHANGE_INFO_FETCH_FAIL", f"Could not fetch exchange info: {e}")
+
+        self.universe_status = self.universe_manager.resolve_universe(
+            requested_pairs=self.config.market_data.pairs,
+            exchange_info=exchange_info,
+        )
+
+        # Print banner and log to audit trail
+        print(self.universe_status.summary_banner())
+        self.logger.log_system_event(
+            "UNIVERSE_INITIALIZED",
+            f"Trading universe resolved: {len(self.universe_status.active_pairs)} active, {len(self.universe_status.skipped_pairs)} skipped.",
+            {
+                "requested": self.universe_status.requested_pairs,
+                "active": self.universe_status.active_pairs,
+                "skipped": self.universe_status.skipped_pairs,
+            },
+        )
+
+        # Update active pairs across bot and market data
+        self.config.market_data.pairs = self.universe_status.active_pairs
+        self.market_data.config.pairs = self.universe_status.active_pairs
+
         # Initial Market Data Fetch
         print("\n[+] Polling initial market tickers...")
         tickers = self.market_data.update_ticker()
         for p, snap in tickers.items():
-            print(f"    {p}: Last=${snap.last_price:,.2f} | Bid=${snap.max_bid:,.2f} | Ask=${snap.min_ask:,.2f} | 24h Change={snap.change_24h*100:+.2f}%")
+            px_fmt = f"${snap.last_price:,.2f}" if snap.last_price >= 1.0 else f"${snap.last_price:.8g}"
+            bid_fmt = f"${snap.max_bid:,.2f}" if snap.max_bid >= 1.0 else f"${snap.max_bid:.8g}"
+            ask_fmt = f"${snap.min_ask:,.2f}" if snap.min_ask >= 1.0 else f"${snap.min_ask:.8g}"
+            print(f"    {p}: Last={px_fmt} | Bid={bid_fmt} | Ask={ask_fmt} | 24h Change={snap.change_24h*100:+.2f}%")
 
         self.last_market_update = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
 

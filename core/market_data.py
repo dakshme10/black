@@ -350,10 +350,10 @@ class MarketDataManager:
 
                     candle = Candle(
                         timestamp=bar_ts,
-                        open=round(bar_open, 2),
-                        high=round(bar_high, 2),
-                        low=round(bar_low, 2),
-                        close=round(bar_close, 2),
+                        open=round(bar_open, 8),
+                        high=round(bar_high, 8),
+                        low=round(bar_low, 8),
+                        close=round(bar_close, 8),
                         volume=round(bar_vol, 6),
                         is_closed=(i > 0),  # Last candle is the current open one
                     )
@@ -366,6 +366,6 @@ class MarketDataManager:
             self.audit_logger.log_system_event(
                 "CANDLE_BOOTSTRAP",
                 f"Bootstrapped {num_candles} synthetic candles for {pair} from ticker "
-                f"(price=${price:,.2f}, vol_24h={snap.coin_volume_24h:.2f})",
+                f"(price=${price:.8g}, vol_24h={snap.coin_volume_24h:.2f})",
                 {"pair": pair, "num_candles": num_candles, "price": price},
             )

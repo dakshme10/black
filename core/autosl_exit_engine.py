@@ -160,9 +160,27 @@ class AutoSLExitEngine:
                 "BTC/USD": 50.0,
                 "ETH/USD": 4.0,
                 "SOL/USD": 0.5,
+                "SUI/USD": 0.01,
+                "ADA/USD": 0.002,
+                "FET/USD": 0.005,
+                "ENA/USD": 0.002,
+                "STO/USD": 0.001,
+                "S/USD": 0.002,
+                "PUMP/USD": 0.00001,
+                "BONK/USD": 0.0000001,
+                "PEPE/USD": 0.00000005,
                 "BTCUSDT": 50.0,
                 "ETHUSDT": 4.0,
                 "SOLUSDT": 0.5,
+                "SUIUSDT": 0.01,
+                "ADAUSDT": 0.002,
+                "FETUSDT": 0.005,
+                "ENAUSDT": 0.002,
+                "STOUSDT": 0.001,
+                "SUSDT": 0.002,
+                "PUMPUSDT": 0.00001,
+                "BONKUSDT": 0.0000001,
+                "PEPEUSDT": 0.00000005,
             },
             "recalc_interval_seconds": 60.0,  # Mid-trade dynamic SL recalculation interval
             "min_tick_buffer": 0.5,           # Minimum price movement to adjust SL
@@ -190,14 +208,16 @@ class AutoSLExitEngine:
             default_config.update(config)
         self.config = default_config
 
-    def get_symbol_step(self, symbol: str) -> float:
-        """Fetch discrete hard stop step for symbol or fall back to default."""
+    def get_symbol_step(self, symbol: str, current_price: float = 0.0) -> float:
+        """Fetch discrete hard stop step for symbol or fall back to dynamic percentage or default."""
         steps = self.config.get("hard_sl_step_usd", {})
         if symbol in steps:
             return float(steps[symbol])
         clean_sym = symbol.replace("/", "")
         if clean_sym in steps:
             return float(steps[clean_sym])
+        if current_price > 0:
+            return max(self.config.get("tick_size", 0.00000001), current_price * 0.0005)
         return float(self.config.get("hard_sl_trailing_step", 10.0))
 
     def round_to_tick(self, price: float, tick_size: Optional[float] = None) -> float:
@@ -355,7 +375,7 @@ class AutoSLExitEngine:
                 self._update_soft_trailing_sl(pos, effective_tick)
 
                 # Check Hard Broker Stop Trailing Step
-                step = self.get_symbol_step(pos.symbol)
+                step = self.get_symbol_step(pos.symbol, current_price=pos.current_price)
                 self._update_hard_broker_sl(pos, profit_points, step, effective_tick)
 
             return None, None

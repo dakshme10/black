@@ -1201,6 +1201,16 @@
                     <select id="trade-sym" class="modal-input">
                         <option value="BTC/USD">BTC/USD</option>
                         <option value="ETH/USD">ETH/USD</option>
+                        <option value="PEPE/USD">PEPE/USD</option>
+                        <option value="BONK/USD">BONK/USD</option>
+                        <option value="STO/USD">STO/USD</option>
+                        <option value="FET/USD">FET/USD</option>
+                        <option value="PUMP/USD">PUMP/USD</option>
+                        <option value="ENA/USD">ENA/USD</option>
+                        <option value="S/USD">S/USD</option>
+                        <option value="ADA/USD">ADA/USD</option>
+                        <option value="SOL/USD">SOL/USD</option>
+                        <option value="SUI/USD">SUI/USD</option>
                     </select>
                 </div>
                 <div>
@@ -1449,6 +1459,15 @@
         // =========================================================================
         // TELEMETRY RENDER PIPELINE                                                //
         // =========================================================================
+        function formatPrice(px, maxDec = 8) {
+            if (px === undefined || px === null || isNaN(px)) return '$0.00';
+            const num = Number(px);
+            if (num >= 100) return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            if (num >= 1) return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+            if (num >= 0.01) return '$' + num.toFixed(4);
+            return '$' + num.toFixed(maxDec);
+        }
+
         function renderTelemetry(data) {
             if (!data) return;
 
@@ -1596,18 +1615,23 @@
             // 7. Footer Tickers
             const tracking = data.tracking || [];
             tracking.forEach(item => {
-                if (item.symbol === 'BTC/USD') {
-                    document.getElementById('ft-btc-price').innerText = `$${(item.ticker.last_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+                const sym = item.symbol;
+                const px = item.ticker.last_price || 0;
+                const c = item.ticker.change_24h_pct || 0;
+                const pxStr = formatPrice(px);
+                const chgStr = `${c >= 0 ? '+' : ''}${c.toFixed(2)}%`;
+                const chgClass = c >= 0 ? 'text-pos mono' : 'text-neg mono';
+
+                if (sym === 'BTC/USD') {
+                    const el = document.getElementById('ft-btc-price');
+                    if (el) el.innerText = pxStr;
                     const chgEl = document.getElementById('ft-btc-chg');
-                    const c = item.ticker.change_24h_pct || 0;
-                    chgEl.innerText = `${c >= 0 ? '+' : ''}${c.toFixed(2)}%`;
-                    chgEl.className = c >= 0 ? 'text-pos mono' : 'text-neg mono';
-                } else if (item.symbol === 'ETH/USD') {
-                    document.getElementById('ft-eth-price').innerText = `$${(item.ticker.last_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+                    if (chgEl) { chgEl.innerText = chgStr; chgEl.className = chgClass; }
+                } else if (sym === 'ETH/USD') {
+                    const el = document.getElementById('ft-eth-price');
+                    if (el) el.innerText = pxStr;
                     const chgEl = document.getElementById('ft-eth-chg');
-                    const c = item.ticker.change_24h_pct || 0;
-                    chgEl.innerText = `${c >= 0 ? '+' : ''}${c.toFixed(2)}%`;
-                    chgEl.className = c >= 0 ? 'text-pos mono' : 'text-neg mono';
+                    if (chgEl) { chgEl.innerText = chgStr; chgEl.className = chgClass; }
                 }
             });
         }
@@ -1664,7 +1688,7 @@
                                 <span class="pill pill-blue mono" id="pill-tick-${cleanSym}" style="font-size:10px;">5m Microstructure</span>
                             </div>
                             <div style="text-align:right;">
-                                <div class="symbol-price mono" id="px-${cleanSym}">$${lastPx.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                                <div class="symbol-price mono" id="px-${cleanSym}">${formatPrice(lastPx)}</div>
                                 <div style="font-size:11px;" class="mono ${chgClass}" id="chg-${cleanSym}">
                                     ${chg >= 0 ? '+' : ''}${chg.toFixed(2)}% | 24h Vol: ${Math.round(tk.volume_24h || 0).toLocaleString()}
                                 </div>
@@ -1822,7 +1846,7 @@
                         }
                     }
                     card.dataset.lastPrice = lastPx;
-                    if (pxEl) pxEl.innerText = `$${lastPx.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+                    if (pxEl) pxEl.innerText = formatPrice(lastPx);
 
                     // Micro-pulse indicator to show active evaluation
                     const tickPill = document.getElementById(`pill-tick-${cleanSym}`);

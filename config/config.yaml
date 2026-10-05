@@ -57,6 +57,15 @@ autosl:
       BTC/USD: 50.0
       ETH/USD: 4.0
       SOL/USD: 0.5
+      SUI/USD: 0.01
+      ADA/USD: 0.002
+      FET/USD: 0.005
+      ENA/USD: 0.002
+      STO/USD: 0.001
+      S/USD: 0.002
+      PUMP/USD: 0.00001
+      BONK/USD: 0.0000001
+      PEPE/USD: 0.00000005
   momentum_extension:
     enabled: true
     fast_target_max_seconds: 180.0
@@ -69,6 +78,16 @@ market_data:
   pairs:
     - "BTC/USD"
     - "ETH/USD"
+    - "PEPE/USD"
+    - "BONK/USD"
+    - "STO/USD"
+    - "FET/USD"
+    - "PUMP/USD"
+    - "ENA/USD"
+    - "S/USD"
+    - "ADA/USD"
+    - "SOL/USD"
+    - "SUI/USD"
   poll_interval_seconds: 2.0
   stale_data_threshold_seconds: 30.0
   primary_timeframe: "5m"

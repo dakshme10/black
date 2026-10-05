@@ -26,6 +26,8 @@ import uvicorn
 
 load_dotenv()
 
+from core.universe_manager import TARGET_UNIVERSE
+
 _WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 
 app = FastAPI(title="Roostoo Autonomous Quant Bot Dashboard")
@@ -43,6 +45,16 @@ _LAST_TICKER_FETCH = 0.0
 _CACHED_TICKERS: Dict[str, Any] = {
     "BTC/USD": {"LastPrice": 96850.0, "MaxBid": 96845.0, "MinAsk": 96855.0, "Change": 0.0125, "CoinTradeValue": 45000000},
     "ETH/USD": {"LastPrice": 3610.0, "MaxBid": 3609.5, "MinAsk": 3610.5, "Change": -0.0045, "CoinTradeValue": 18000000},
+    "PEPE/USD": {"LastPrice": 0.0000085, "MaxBid": 0.00000849, "MinAsk": 0.00000851, "Change": 0.035, "CoinTradeValue": 12000000},
+    "BONK/USD": {"LastPrice": 0.0000215, "MaxBid": 0.0000214, "MinAsk": 0.0000216, "Change": -0.018, "CoinTradeValue": 8500000},
+    "STO/USD": {"LastPrice": 0.155, "MaxBid": 0.154, "MinAsk": 0.156, "Change": 0.008, "CoinTradeValue": 1500000},
+    "FET/USD": {"LastPrice": 1.35, "MaxBid": 1.348, "MinAsk": 1.352, "Change": 0.022, "CoinTradeValue": 6200000},
+    "PUMP/USD": {"LastPrice": 0.00315, "MaxBid": 0.00314, "MinAsk": 0.00316, "Change": -0.012, "CoinTradeValue": 3100000},
+    "ENA/USD": {"LastPrice": 0.385, "MaxBid": 0.384, "MinAsk": 0.386, "Change": 0.015, "CoinTradeValue": 4200000},
+    "S/USD": {"LastPrice": 0.525, "MaxBid": 0.524, "MinAsk": 0.526, "Change": -0.005, "CoinTradeValue": 2100000},
+    "ADA/USD": {"LastPrice": 0.425, "MaxBid": 0.424, "MinAsk": 0.426, "Change": 0.008, "CoinTradeValue": 9400000},
+    "SOL/USD": {"LastPrice": 185.50, "MaxBid": 185.40, "MinAsk": 185.60, "Change": 0.018, "CoinTradeValue": 25000000},
+    "SUI/USD": {"LastPrice": 2.15, "MaxBid": 2.148, "MinAsk": 2.152, "Change": 0.028, "CoinTradeValue": 11000000},
 }
 
 
@@ -58,10 +70,9 @@ def _get_live_roostoo_tickers() -> Dict[str, Any]:
                 data = resp.json()
                 if data.get("Success") and "Data" in data:
                     t_data = data["Data"]
-                    if "BTC/USD" in t_data:
-                        _CACHED_TICKERS["BTC/USD"] = t_data["BTC/USD"]
-                    if "ETH/USD" in t_data:
-                        _CACHED_TICKERS["ETH/USD"] = t_data["ETH/USD"]
+                    for sym in TARGET_UNIVERSE:
+                        if sym in t_data:
+                            _CACHED_TICKERS[sym] = t_data[sym]
                     _LAST_TICKER_FETCH = now
         except Exception:
             pass
@@ -76,17 +87,63 @@ def _build_telemetry() -> Dict[str, Any]:
     time_only = now_ist.strftime("%H:%M:%S IST")
 
     tickers = _get_live_roostoo_tickers()
-    btc_t = tickers.get("BTC/USD", {})
-    eth_t = tickers.get("ETH/USD", {})
 
-    btc_px = float(btc_t.get("LastPrice", 96850.0))
-    eth_px = float(eth_t.get("LastPrice", 3610.0))
+    tracking_list = []
+    ticks_list = []
+    for sym in TARGET_UNIVERSE:
+        t = tickers.get(sym, {})
+        last_px = float(t.get("LastPrice", 1.0))
+        chg = float(t.get("Change", 0.0)) * 100.0
+        vol = float(t.get("CoinTradeValue", 100000))
+        bid = float(t.get("MaxBid", last_px * 0.999))
+        ask = float(t.get("MinAsk", last_px * 1.001))
+        spread = max(0.0, ask - bid)
+        spread_bps = (spread / last_px * 10000.0) if last_px > 0 else 0.0
 
-    btc_chg = float(btc_t.get("Change", 0.0)) * 100.0
-    eth_chg = float(eth_t.get("Change", 0.0)) * 100.0
-
-    btc_vol = float(btc_t.get("CoinTradeValue", 45000000))
-    eth_vol = float(eth_t.get("CoinTradeValue", 18000000))
+        tracking_list.append({
+            "symbol": sym,
+            "ticker": {
+                "last_price": last_px,
+                "bid": bid,
+                "ask": ask,
+                "spread": spread,
+                "spread_bps": spread_bps,
+                "change_24h_pct": chg,
+                "volume_24h": vol,
+            },
+            "regime": {
+                "name": "RANGE",
+                "trend_direction": "NEUTRAL",
+                "adx": 22.4,
+                "atr": last_px * 0.008,
+                "volatility_percentile": 48.0,
+            },
+            "value_area": {
+                "vah": last_px * 1.004,
+                "val": last_px * 0.996,
+                "poc": last_px * 1.0005,
+                "signal": "NO_TRADE",
+                "status": "MONITORING",
+                "pill_class": "pill-blue",
+            },
+            "liquidity_sweep": {
+                "signal": "NO_TRADE",
+                "status": "SCANNING",
+                "displacement": False,
+                "fvg_present": False,
+            },
+            "chosen_signal": {
+                "direction": "NO_TRADE",
+                "confidence": 0.0,
+                "strategy": "MULTI_ENGINE",
+                "reason": "Scanning order book microstructure...",
+                "stop_loss": 0,
+                "take_profit_1": 0,
+                "take_profit_2": 0,
+                "expected_rr": 0,
+            },
+        })
+        ticks_list.append({"symbol": sym, "price": last_px, "side": "BUY", "timestamp": time_only})
 
     return {
         "server_time": server_time,
@@ -103,6 +160,11 @@ def _build_telemetry() -> Dict[str, Any]:
             "last_signal": "None",
             "last_order": "None",
             "last_error": "None",
+        },
+        "universe": {
+            "requested": TARGET_UNIVERSE,
+            "active": TARGET_UNIVERSE,
+            "skipped": {},
         },
         "portfolio": {
             "equity": _INITIAL_CAPITAL,
@@ -134,98 +196,8 @@ def _build_telemetry() -> Dict[str, Any]:
             "max_drawdown_pct": 0.00,
         },
         "positions": [],
-        "tracking": [
-            {
-                "symbol": "BTC/USD",
-                "ticker": {
-                    "last_price": btc_px,
-                    "bid": float(btc_t.get("MaxBid", btc_px - 0.50)),
-                    "ask": float(btc_t.get("MinAsk", btc_px + 0.50)),
-                    "spread": 1.0,
-                    "spread_bps": 0.1,
-                    "change_24h_pct": btc_chg,
-                    "volume_24h": btc_vol,
-                },
-                "regime": {
-                    "name": "RANGE",
-                    "trend_direction": "NEUTRAL",
-                    "adx": 22.4,
-                    "atr": round(btc_px * 0.008, 2),
-                    "volatility_percentile": 48.0,
-                },
-                "value_area": {
-                    "vah": btc_px * 1.004,
-                    "val": btc_px * 0.996,
-                    "poc": btc_px * 1.0005,
-                    "signal": "NO_TRADE",
-                    "status": "MONITORING",
-                    "pill_class": "pill-blue",
-                },
-                "liquidity_sweep": {
-                    "signal": "NO_TRADE",
-                    "status": "SCANNING",
-                    "displacement": False,
-                    "fvg_present": False,
-                },
-                "signal": {
-                    "direction": "NO_TRADE",
-                    "confidence": 0.0,
-                    "strategy": "MULTI_ENGINE",
-                    "reason": "Scanning order book microstructure...",
-                    "stop_loss": 0,
-                    "take_profit_1": 0,
-                    "take_profit_2": 0,
-                    "expected_rr": 0,
-                },
-            },
-            {
-                "symbol": "ETH/USD",
-                "ticker": {
-                    "last_price": eth_px,
-                    "bid": float(eth_t.get("MaxBid", eth_px - 0.10)),
-                    "ask": float(eth_t.get("MinAsk", eth_px + 0.10)),
-                    "spread": 0.20,
-                    "spread_bps": 0.55,
-                    "change_24h_pct": eth_chg,
-                    "volume_24h": eth_vol,
-                },
-                "regime": {
-                    "name": "TREND",
-                    "trend_direction": "BULLISH",
-                    "adx": 28.5,
-                    "atr": round(eth_px * 0.01, 2),
-                    "volatility_percentile": 52.0,
-                },
-                "value_area": {
-                    "vah": eth_px * 1.006,
-                    "val": eth_px * 0.994,
-                    "poc": eth_px * 1.001,
-                    "signal": "NO_TRADE",
-                    "status": "MONITORING",
-                    "pill_class": "pill-blue",
-                },
-                "liquidity_sweep": {
-                    "signal": "NO_TRADE",
-                    "status": "SCANNING",
-                    "displacement": False,
-                    "fvg_present": False,
-                },
-                "signal": {
-                    "direction": "NO_TRADE",
-                    "confidence": 0.0,
-                    "strategy": "MULTI_ENGINE",
-                    "reason": "Scanning order book microstructure...",
-                    "stop_loss": 0,
-                    "take_profit_1": 0,
-                    "take_profit_2": 0,
-                    "expected_rr": 0,
-                },
-            },
-        ],
-        "ticks": [
-            {"symbol": "BTC/USD", "price": btc_px, "side": "BUY", "timestamp": time_only},
-            {"symbol": "ETH/USD", "price": eth_px, "side": "SELL", "timestamp": time_only},
-        ],
+        "tracking": tracking_list,
+        "ticks": ticks_list,
         "orders": [],
         "audit": {
             "verified": True,
