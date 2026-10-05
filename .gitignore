@@ -75,3 +75,6 @@ logs/*.csv
 # Docker local volumes
 docker_volumes/
 
+# Scratch payloads
+scratch/
+
