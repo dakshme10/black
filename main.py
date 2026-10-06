@@ -129,6 +129,12 @@ class RoostooAutonomousBot:
         self._last_signal_cleanup: float = time.time()
         self._last_periodic_recon: float = time.time()
 
+        # Circuit breaker alert state tracking (prevents message flooding)
+        self._circuit_breaker_active: bool = False
+        self._last_circuit_breaker_type: str = ""
+        self._last_circuit_breaker_alert_time: float = 0.0
+        self._circuit_breaker_reminder_interval: float = 3600.0  # At most one reminder per hour while frozen
+
         # Observability state variables
         self.last_market_update: str = "N/A"
         self.last_api_request: str = "N/A"
@@ -347,15 +353,52 @@ class RoostooAutonomousBot:
         is_tripped, breaker_msg = self.risk_manager.check_circuit_breakers()
         if is_tripped:
             self.last_error = f"CIRCUIT_BREAKER: {breaker_msg}"
-            if getattr(self, "notifier", None):
+            now_ts = time.time()
+
+            # Determine breaker severity category
+            if (
+                self.risk_manager.permanent_kill_switch
+                or "MAX_DRAWDOWN" in breaker_msg.upper()
+                or "PERMANENT" in breaker_msg.upper()
+            ):
+                breaker_type = "PERMANENT_KILL_SWITCH"
+            else:
+                breaker_type = "ROLLING_24H_FREEZE"
+
+            # Edge-triggered notification: alert once on trip or escalation, throttle reminders to 1h
+            should_notify = False
+            is_reminder = False
+            if not self._circuit_breaker_active:
+                should_notify = True
+                self._circuit_breaker_active = True
+                self._last_circuit_breaker_type = breaker_type
+                self._last_circuit_breaker_alert_time = now_ts
+            elif breaker_type == "PERMANENT_KILL_SWITCH" and self._last_circuit_breaker_type != "PERMANENT_KILL_SWITCH":
+                # Severity escalated to permanent kill switch
+                should_notify = True
+                self._last_circuit_breaker_type = breaker_type
+                self._last_circuit_breaker_alert_time = now_ts
+            elif (now_ts - self._last_circuit_breaker_alert_time) >= self._circuit_breaker_reminder_interval:
+                # Periodic hourly status reminder while still in frozen state
+                should_notify = True
+                is_reminder = True
+                self._last_circuit_breaker_alert_time = now_ts
+
+            if should_notify and getattr(self, "notifier", None):
                 self.notifier.notify_circuit_breaker(
                     reason=breaker_msg,
                     current_drawdown_pct=self.portfolio.get_current_drawdown(),
                     max_drawdown_pct=self.config.risk_controls.max_drawdown_limit,
+                    is_reminder=is_reminder,
                 )
-            # Liquidate open positions if max drawdown hit
+
+            # Liquidate open positions if max drawdown hit (permanent kill switch)
             if self.risk_manager.permanent_kill_switch:
-                for sym in list(self.portfolio.positions.keys()):
+                open_positions = [
+                    (sym, pos) for sym, pos in list(self.portfolio.positions.items())
+                    if pos.quantity > 1e-5
+                ]
+                for sym, pos in open_positions:
                     px = mark_prices.get(sym, 0.0)
                     sig_liquidate = Signal(
                         strategy="RISK_MANAGER",
@@ -374,6 +417,18 @@ class RoostooAutonomousBot:
                     risk_dec = self.risk_manager.evaluate_signal(sig_liquidate)
                     self.executor.execute_decision(sig_liquidate, risk_dec, px)
             return
+
+        elif self._circuit_breaker_active:
+            # Circuit breaker was active, but has now cleared (freeze duration elapsed)
+            self._circuit_breaker_active = False
+            self._last_circuit_breaker_type = ""
+            self._last_circuit_breaker_alert_time = 0.0
+            self.logger.log_system_event("CIRCUIT_BREAKER_CLEARED", "Circuit breaker freeze period elapsed; trading resumed")
+            if getattr(self, "notifier", None):
+                self.notifier.notify_circuit_breaker_cleared(
+                    reason="Freeze window elapsed safely",
+                    current_drawdown_pct=self.portfolio.get_current_drawdown(),
+                )
 
         # 4. Manage Open Positions via AutoSL Exit Engine
         # (Phase 1 Validation Window + Phase 2 Dynamic Trailing + Fast Momentum Extension)
@@ -693,6 +748,17 @@ class RoostooAutonomousBot:
     def handle_kill_switch(self) -> Dict[str, Any]:
         """Emergency kill switch: activates permanent breaker and de-risks all positions."""
         self.risk_manager.permanent_kill_switch = True
+        self._circuit_breaker_active = True
+        self._last_circuit_breaker_type = "PERMANENT_KILL_SWITCH"
+        self._last_circuit_breaker_alert_time = time.time()
+
+        if getattr(self, "notifier", None):
+            self.notifier.notify_circuit_breaker(
+                reason="EMERGENCY WEB DASHBOARD KILL SWITCH ACTIVATED",
+                current_drawdown_pct=self.portfolio.get_current_drawdown(),
+                max_drawdown_pct=self.config.risk_controls.max_drawdown_limit,
+            )
+
         liquidated = []
         tickers = self.market_data.latest_tickers
         for sym, pos in list(self.portfolio.positions.items()):
@@ -766,6 +832,17 @@ class RoostooAutonomousBot:
         """Reset rolling 24h freeze timer and cleared breaker flags."""
         self.risk_manager.freeze_until_timestamp = 0.0
         self.risk_manager.permanent_kill_switch = False
+        self._circuit_breaker_active = False
+        self._last_circuit_breaker_type = ""
+        self._last_circuit_breaker_alert_time = 0.0
+
+        if getattr(self, "notifier", None):
+            self.notifier.notify_circuit_breaker_cleared(
+                reason="Operator manually reset risk circuit breaker via dashboard",
+                current_drawdown_pct=self.portfolio.get_current_drawdown(),
+            )
+            self.notifier.reset_circuit_breaker_throttle()
+
         self.portfolio.peak_equity = self.portfolio.total_equity
         curr_eq = self.portfolio.total_equity
         self.portfolio.equity_curve = [s for s in self.portfolio.equity_curve if s.equity <= curr_eq * 1.05]

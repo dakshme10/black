@@ -210,3 +210,80 @@ def test_trailing_stop_engine(portfolio, risk_manager):
     new_stop3 = risk_manager.update_trailing_stop("BTC/USD", 52500.0, atr=500.0)
     assert new_stop3 is None
     assert portfolio.positions["BTC/USD"].stop_loss == new_stop2
+
+
+def test_bot_run_cycle_circuit_breaker_flooding_suppressed(tmp_path):
+    """
+    Verify that repeated consecutive run_cycle() iterations when circuit breaker is active
+    do not flood notify_circuit_breaker calls.
+    """
+    from unittest.mock import MagicMock
+    from main import RoostooAutonomousBot
+    from config.trading_params import AppConfig
+    from core.market_data import TickerSnapshot
+
+    config = AppConfig()
+    config.dry_run = True
+    config.live_trading_enabled = False
+    config.audit.audit_file = str(tmp_path / "audit.jsonl")
+    config.audit.api_log_file = str(tmp_path / "api_log.jsonl")
+    config.audit.trade_log_file = str(tmp_path / "trade_log.csv")
+    config.web.enabled = False
+
+    bot = RoostooAutonomousBot(config)
+    bot.order_manager.persistence_file = str(tmp_path / "orders.json")
+    bot.portfolio.persistence_file = str(tmp_path / "portfolio.json")
+    bot.portfolio.positions.clear()
+
+    # Mock notifier
+    mock_notifier = MagicMock()
+    bot.notifier = mock_notifier
+
+    # Provide mocked ticker data
+    now_ms = int(time.time() * 1000)
+    bot.market_data._latest_tickers = {
+        "BTC/USD": TickerSnapshot(
+            pair="BTC/USD",
+            last_price=85000.0,
+            max_bid=84990.0,
+            min_ask=85010.0,
+            change_24h=0.01,
+            coin_volume_24h=100.0,
+            unit_volume_24h=8500000.0,
+            server_time=now_ms,
+        )
+    }
+
+    # Trigger circuit breaker: 4.0% drawdown
+    bot.portfolio.equity_curve = [
+        bot.portfolio.equity_curve[0],
+        type(bot.portfolio.equity_curve[0])(
+            timestamp_ms=now_ms,
+            equity=96000.0,
+            cash=96000.0,
+            gross_exposure=0.0,
+            unrealized_pnl=0.0,
+            realized_pnl=-4000.0,
+            cumulative_fees=50.0,
+        ),
+    ]
+
+    # Run cycle 1: Breaker trips -> Should notify ONCE
+    bot.run_cycle()
+    assert mock_notifier.notify_circuit_breaker.call_count == 1
+
+    # Run cycles 2 through 10 (simulating 10 consecutive ticks while frozen)
+    for _ in range(9):
+        bot.run_cycle()
+
+    # Notification must STILL be exactly 1! (Flooding completely suppressed)
+    assert mock_notifier.notify_circuit_breaker.call_count == 1
+
+    # Now operator resets risk
+    bot.handle_reset_risk()
+    assert mock_notifier.notify_circuit_breaker_cleared.call_count == 1
+
+    # Now if another cycle runs with normal risk, no breaker alert
+    bot.run_cycle()
+    assert mock_notifier.notify_circuit_breaker.call_count == 1
+

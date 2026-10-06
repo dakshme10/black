@@ -35,6 +35,10 @@ class TelegramNotifier:
         self._api_url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
         self._recent_messages: Dict[int, float] = {}
 
+        # Circuit breaker notification state tracking (prevents alert flooding)
+        self._circuit_breaker_last_sent: float = 0.0
+        self._circuit_breaker_last_category: str = ""
+
         if self.enabled:
             logger.info("Telegram notifier initialized (chat_id: %s)", self.chat_id)
         else:
@@ -46,6 +50,8 @@ class TelegramNotifier:
         parse_mode: str = "HTML",
         blocking: bool = False,
         timeout: float = 6.0,
+        dedup_key: Optional[str] = None,
+        dedup_window: float = 30.0,
     ) -> bool:
         """
         Sends an alert message to the configured Telegram chat.
@@ -54,12 +60,13 @@ class TelegramNotifier:
         if not self.enabled:
             return False
 
-        # Deduplicate identical messages sent within 30 seconds
+        # Deduplicate identical messages or custom dedup_key sent within dedup_window
         now = time.time()
-        self._recent_messages = {h: t for h, t in self._recent_messages.items() if now - t < 60.0}
-        msg_hash = hash(text)
-        if msg_hash in self._recent_messages and (now - self._recent_messages[msg_hash]) < 30.0:
-            logger.info("Dropping duplicate Telegram message within 30s rate window.")
+        max_window = max(120.0, dedup_window * 2.0)
+        self._recent_messages = {h: t for h, t in self._recent_messages.items() if now - t < max_window}
+        msg_hash = hash(dedup_key) if dedup_key else hash(text)
+        if msg_hash in self._recent_messages and (now - self._recent_messages[msg_hash]) < dedup_window:
+            logger.info("Dropping duplicate Telegram message within %.0fs rate window.", dedup_window)
             return True
         self._recent_messages[msg_hash] = now
 
@@ -269,15 +276,96 @@ class TelegramNotifier:
         reason: str,
         current_drawdown_pct: float,
         max_drawdown_pct: float,
-    ) -> None:
+        is_reminder: bool = False,
+        cooldown_seconds: float = 1800.0,
+    ) -> bool:
         """
         High-priority risk alert when drawdown limit or circuit breaker is tripped.
+        Enforces category-based deduplication and cooldown to prevent alert flooding.
         """
+        if not self.enabled:
+            return False
+
+        now = time.time()
+        reason_upper = reason.upper()
+        if "PERMANENT" in reason_upper or "MAX_DRAWDOWN" in reason_upper:
+            category = "PERMANENT_KILL_SWITCH"
+            header = "🚨 <b>CIRCUIT BREAKER TRIGGERED: PERMANENT HALT</b>"
+        else:
+            category = "ROLLING_24H_FREEZE"
+            header = (
+                "⚠️ <b>CIRCUIT BREAKER ACTIVE [STATUS REMINDER]</b>"
+                if is_reminder
+                else "🚨 <b>CIRCUIT BREAKER TRIGGERED</b>"
+            )
+
+        # Drop duplicate/repeated alerts within cooldown unless category transitioned/escalated
+        is_escalation = (
+            category == "PERMANENT_KILL_SWITCH"
+            and self._circuit_breaker_last_category != "PERMANENT_KILL_SWITCH"
+        )
+        if not is_reminder and not is_escalation:
+            if (
+                category == self._circuit_breaker_last_category
+                and (now - self._circuit_breaker_last_sent) < cooldown_seconds
+            ):
+                logger.info(
+                    "Dropping repeated circuit breaker notification within cooldown (category: %s, elapsed: %.1fs < %.0fs)",
+                    category,
+                    now - self._circuit_breaker_last_sent,
+                    cooldown_seconds,
+                )
+                return False
+
+        self._circuit_breaker_last_category = category
+        self._circuit_breaker_last_sent = now
+
         msg = (
-            "🚨 <b>CIRCUIT BREAKER TRIGGERED</b>\n\n"
+            f"{header}\n\n"
             f"• <b>Reason:</b> {html.escape(reason)}\n"
             f"• <b>Current Drawdown:</b> {current_drawdown_pct * 100.0:.2f}%\n"
             f"• <b>Allowed Limit:</b> {max_drawdown_pct * 100.0:.2f}%\n"
             "• <b>Action:</b> Trading paused, open risk frozen or de-risked."
         )
-        self.send_message(msg)
+        return self.send_message(
+            msg,
+            dedup_key=f"circuit_breaker_{category}",
+            dedup_window=cooldown_seconds if not is_reminder else 60.0,
+        )
+
+    def notify_circuit_breaker_cleared(
+        self,
+        reason: str = "Freeze duration elapsed or operator reset",
+        current_drawdown_pct: float = 0.0,
+    ) -> bool:
+        """
+        Alerts when circuit breaker freeze expires or is manually cleared by operator.
+        Resets the internal circuit breaker alert latch and purge deduplication entries.
+        """
+        self.reset_circuit_breaker_throttle()
+        msg = (
+            "✅ <b>CIRCUIT BREAKER CLEARED / RESUMED</b>\n\n"
+            f"• <b>Status:</b> Normal autonomous trading resumed\n"
+            f"• <b>Reason:</b> {html.escape(reason)}\n"
+            f"• <b>Current Drawdown:</b> {current_drawdown_pct * 100.0:.2f}%\n"
+            "• <b>Action:</b> Market scanning and trade execution active."
+        )
+        return self.send_message(msg, dedup_key="circuit_breaker_cleared", dedup_window=60.0)
+
+    def reset_circuit_breaker_throttle(self) -> None:
+        """Reset the circuit breaker throttle state and purge cached breaker deduplication keys."""
+        self._circuit_breaker_last_category = ""
+        self._circuit_breaker_last_sent = 0.0
+        # Remove any circuit breaker keys from recent message deduplication cache
+        keys_to_remove = [
+            h for h in list(self._recent_messages.keys())
+            if h in {
+                hash("circuit_breaker_ROLLING_24H_FREEZE"),
+                hash("circuit_breaker_PERMANENT_KILL_SWITCH"),
+                hash("circuit_breaker_GENERAL"),
+            }
+        ]
+        for k in keys_to_remove:
+            self._recent_messages.pop(k, None)
+
+
