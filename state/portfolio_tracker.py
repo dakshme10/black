@@ -481,11 +481,8 @@ class PortfolioTracker:
             self.equity_curve = [EquitySnapshot(**s) for s in curve_data]
 
             curr_equity = self.total_equity
-            # Guard against stale baseline / paper run peak equity poisoning live mock run
-            if (
-                abs(persisted_initial - self.initial_capital) > 1.0
-                or (not self.positions and self.peak_equity > curr_equity * 1.05)
-            ):
+            # Only reset baseline if initial capital configuration actually changed
+            if abs(persisted_initial - self.initial_capital) > 1.0:
                 self.peak_equity = curr_equity
                 self.equity_curve = [s for s in self.equity_curve if s.equity <= curr_equity * 1.05]
                 if not self.equity_curve:

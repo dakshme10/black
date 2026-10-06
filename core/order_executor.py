@@ -320,6 +320,20 @@ class OrderExecutor:
                         prev_candle_volume=prev_vol,
                     )
 
+                    if hasattr(self, "risk_manager") and hasattr(self.risk_manager, "record_trade_fill"):
+                        hold_dur = (time.time() - (current_pos.opened_timestamp / 1000.0)) if (current_pos and current_pos.opened_timestamp > 0) else 0.0
+                        realized = (fill_delta * (fill_price - current_pos.entry_price) - fee) if (side == "SELL" and current_pos) else 0.0
+                        self.risk_manager.record_trade_fill(
+                            symbol=signal.symbol,
+                            side=side,
+                            quantity=fill_delta,
+                            price=fill_price,
+                            fee=fee,
+                            realized_pnl=realized,
+                            hold_duration=hold_dur,
+                            exit_reason=str(signal.metadata.get("exit_reason", "")),
+                        )
+
                 self.order_manager.unlock_symbol(signal.symbol)
                 if side == "SELL" and current_pos:
                     current_pos.exit_lock = False
@@ -449,6 +463,20 @@ class OrderExecutor:
                         entry_candle_volume=candle_vol,
                         prev_candle_volume=prev_vol,
                     )
+
+                    if hasattr(self, "risk_manager") and hasattr(self.risk_manager, "record_trade_fill"):
+                        hold_dur = (time.time() - (current_pos.opened_timestamp / 1000.0)) if (current_pos and current_pos.opened_timestamp > 0) else 0.0
+                        realized = (fill_delta * (filled_price - current_pos.entry_price) - fee) if (side == "SELL" and current_pos) else 0.0
+                        self.risk_manager.record_trade_fill(
+                            symbol=signal.symbol,
+                            side=side,
+                            quantity=fill_delta,
+                            price=filled_price,
+                            fee=fee,
+                            realized_pnl=realized,
+                            hold_duration=hold_dur,
+                            exit_reason=str(signal.metadata.get("exit_reason", "")),
+                        )
 
                 # Handle lock release and lifecycle transitions
                 if updated_order and updated_order.status == OrderStatus.FILLED:

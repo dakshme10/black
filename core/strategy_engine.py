@@ -54,9 +54,12 @@ class StrategyEngine:
         self.config = config or StrategiesConfig()
         self.regime_detector = regime_detector or RegimeDetector()
 
-        # Initialize the three strategy modules
+        # Initialize active strategies (Strategy A & B)
         self.strategy_va = ValueAreaStrategy(self.config.value_area)
         self.strategy_ls = LiquiditySweepStrategy(self.config.liquidity_sweep)
+        # Strategy C is strictly decommissioned
+        if hasattr(self.config, "cvd_absorption") and self.config.cvd_absorption:
+            self.config.cvd_absorption.enabled = False
         self.strategy_cvd = CvdAbsorptionStrategy(self.config.cvd_absorption)
 
     def evaluate_symbol(

@@ -285,6 +285,11 @@ class WebServer:
                     return {"status": "success", "message": "Risk freeze reset", "details": result}
 
                 elif cmd == "manual_trade":
+                    if getattr(getattr(self.bot, "config", None), "is_live", False) or os.getenv("COMPETITION_LIVE", "").lower() in ("true", "1"):
+                        raise HTTPException(
+                            status_code=403,
+                            detail="MANUAL_TRADE_FORBIDDEN: Manual trade execution is strictly disabled in competition live mode to enforce 100% autonomous execution compliance."
+                        )
                     if not payload or "symbol" not in payload or "side" not in payload:
                         raise HTTPException(status_code=400, detail="Missing symbol or side in manual trade")
                     result = self.bot.handle_manual_trade(
@@ -304,6 +309,8 @@ class WebServer:
 
                 return {"status": "failed", "message": f"Unknown command: {cmd}"}
 
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.error(f"Error handling dashboard command '{cmd}': {e}", exc_info=True)
                 return {"status": "failed", "message": str(e)}
@@ -546,9 +553,24 @@ class WebServer:
                 "rolling_24h_drawdown_limit": self.bot.config.risk_controls.rolling_24h_drawdown_limit * 100.0,
                 "is_frozen": is_frozen,
                 "permanent_kill": permanent_kill,
+                "risk_state": (
+                    self.bot.risk_manager.governor.drawdown_governor.evaluate_state(port.get_current_drawdown())[0].value
+                    if hasattr(self.bot.risk_manager, "governor")
+                    else "NORMAL"
+                ),
+                "recovery_mode": (
+                    self.bot.risk_manager.governor.drawdown_governor.recovery_mode_active
+                    if hasattr(self.bot.risk_manager, "governor")
+                    else False
+                ),
                 "open_position_count": len(active_positions_list),
                 "max_positions": self.bot.config.portfolio.max_open_positions,
             },
+            "risk_governor": (
+                self.bot.risk_manager.get_governor_telemetry()
+                if hasattr(self.bot, "risk_manager") and hasattr(self.bot.risk_manager, "get_governor_telemetry")
+                else {}
+            ),
             "competition": {
                 "composite_score": metrics.composite_score,
                 "sortino_ratio": metrics.sortino_ratio,

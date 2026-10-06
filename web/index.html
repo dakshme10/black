@@ -850,8 +850,11 @@
         <!-- 5. Risk & Circuit Breakers -->
         <div class="kpi-card">
             <div class="kpi-label">
-                <span>Drawdown Gauges</span>
-                <span class="pill pill-live" id="kpi-circuit-status">CIRCUITS OK</span>
+                <span>Drawdown & Risk Governor</span>
+                <div style="display:flex; gap:4px; align-items:center;">
+                    <span class="pill pill-live" id="kpi-gov-status">GOVERNOR: NORMAL</span>
+                    <span class="pill pill-live" id="kpi-circuit-status">CIRCUITS OK</span>
+                </div>
             </div>
             <div class="kpi-value mono" id="kpi-current-dd">0.00%</div>
             <div class="kpi-sub mono">
@@ -1339,6 +1342,10 @@
         }
 
         async function submitManualTrade() {
+            if (window.botConfig && window.botConfig.live_trading_enabled && !window.botConfig.dry_run) {
+                showToast("MANUAL TRADING DISABLED: Strictly prohibited in competition live mode (autonomous rule).");
+                return;
+            }
             const sym = document.getElementById('trade-sym').value;
             const side = document.getElementById('trade-side').value;
             const notional = parseFloat(document.getElementById('trade-notional').value || '0');
@@ -1386,6 +1393,10 @@
         }, 100);
 
         async function fillAndSubmitTestTrade(sym, side, notional) {
+            if (window.botConfig && window.botConfig.live_trading_enabled && !window.botConfig.dry_run) {
+                showToast("MANUAL TRADING DISABLED: Strictly prohibited in competition live mode.");
+                return;
+            }
             closeModal('modal-trade');
             showToast(`Submitting test ${side} order for ${sym} ($${notional})...`);
             await sendCommand('manual_trade', { symbol: sym, side: side, notional_usd: notional });
@@ -1586,6 +1597,29 @@
                 circBadge.innerText = 'CIRCUITS OK';
                 document.getElementById('ft-freeze-status').innerText = 'NORMAL';
                 document.getElementById('ft-freeze-status').className = 'text-pos';
+            }
+
+            // Risk Governor State Pill
+            const govBadge = document.getElementById('kpi-gov-status');
+            if (govBadge) {
+                const riskGov = data.risk_governor || {};
+                const rState = port.risk_state || riskGov.risk_state || 'NORMAL';
+                const isRec = port.recovery_mode || riskGov.recovery_mode || false;
+                const activeCds = riskGov.active_cooldowns || {};
+                const cdCount = Object.keys(activeCds).length;
+
+                let txt = `GOVERNOR: ${rState}`;
+                if (isRec) txt += ' (REC)';
+                if (cdCount > 0) txt += ` [${cdCount} CD]`;
+                govBadge.innerText = txt;
+
+                if (rState === 'EMERGENCY' || rState === 'DEFENSIVE') {
+                    govBadge.className = 'pill pill-red';
+                } else if (rState === 'REDUCED_RISK' || isRec || rState === 'CAUTION') {
+                    govBadge.className = 'pill pill-dry';
+                } else {
+                    govBadge.className = 'pill pill-live';
+                }
             }
 
             // Rate limiter

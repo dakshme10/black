@@ -37,6 +37,7 @@ COPY --chown=appuser:appgroup strategies/ ./strategies/
 COPY --chown=appuser:appgroup state/ ./state/
 COPY --chown=appuser:appgroup backtest/ ./backtest/
 COPY --chown=appuser:appgroup logs/ ./logs/
+COPY --chown=appuser:appgroup web/ ./web/
 COPY --chown=appuser:appgroup tests/ ./tests/
 COPY --chown=appuser:appgroup main.py ./main.py
 

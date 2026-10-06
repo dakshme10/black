@@ -26,6 +26,60 @@ risk_controls:
   max_drawdown_limit: 0.06           # 6.0% maximum peak-to-trough circuit breaker
   enforce_circuit_breakers: true
 
+risk_governor:
+  enabled: true
+  trade_frequency:
+    enabled: true
+    minimum_hold_seconds: 300
+    minimum_seconds_between_same_symbol_entries: 300
+    cooldown_after_loss_seconds: 900
+    cooldown_after_profit_seconds: 120
+  signal_freshness:
+    enabled: true
+    require_reset_before_reentry: true
+    max_signal_age_seconds: 300
+  expected_edge:
+    enabled: true
+    min_edge_pct: 0.0040             # 40 bps (0.40%) minimum gross edge
+    fee_slippage_buffer_pct: 0.0016  # 16 bps buffer above round-trip fees
+    min_risk_reward: 1.5
+  position_sizing:
+    enabled: true
+    base_risk_per_trade_pct: 0.010   # 1.0% equity risk
+    max_major_position_pct: 0.50     # 50% max for BTC/ETH (aligns with portfolio cap)
+    max_alt_position_pct: 0.25       # 25% max for altcoins
+    quality_scaling_enabled: true
+    regime_scaling_enabled: true
+  drawdown_governor:
+    enabled: true
+    caution_drawdown_pct: 0.015      # 1.5% DD -> CAUTION (0.70x risk)
+    reduced_risk_drawdown_pct: 0.025 # 2.5% DD -> REDUCED_RISK (0.40x risk)
+    defensive_drawdown_pct: 0.035    # 3.5% DD -> DEFENSIVE (0.20x risk)
+    emergency_drawdown_pct: 0.050    # 5.0% DD -> EMERGENCY (0.00x risk)
+  recovery_mode:
+    enabled: true
+    activation_drawdown_pct: 0.025   # Activate recovery mode at 2.5% DD
+    deactivation_drawdown_pct: 0.010 # Return to normal when DD < 1.0%
+    min_consecutive_wins_to_deactivate: 2
+    position_size_multiplier: 0.50
+    stricter_edge_multiplier: 1.25
+    stricter_cooldown_multiplier: 1.50
+  symbol_throttling:
+    enabled: true
+    lookback_trades: 10
+    max_consecutive_losses: 2
+    throttled_cooldown_seconds: 1800  # 30 min cooldown after 2 consecutive losses
+    throttled_size_multiplier: 0.50
+  exposure_limits:
+    enabled: true
+    max_gross_exposure_pct: 1.00     # 100% total gross exposure
+    max_concurrent_positions: 2
+    max_alt_exposure_pct: 0.50       # 50% max combined altcoin exposure
+    max_alt_concurrent_positions: 1  # Max 1 altcoin at a time
+    majors:
+      - "BTC/USD"
+      - "ETH/USD"
+
 fees:
   maker_fee_pct: 0.0005   # 0.05% Limit/Maker
   taker_fee_pct: 0.0010   # 0.10% Market/Taker

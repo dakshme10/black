@@ -24,7 +24,7 @@ def mock_bot(tmp_path):
     config.web.enabled = True
     config.web.auth_token = ""
 
-    bot = RoostooAutonomousBot(config)
+    bot = RoostooAutonomousBot(config, data_dir=str(tmp_path))
     bot.order_manager.persistence_file = str(tmp_path / "orders.json")
     bot.portfolio.persistence_file = str(tmp_path / "portfolio.json")
     bot.portfolio.positions.clear()

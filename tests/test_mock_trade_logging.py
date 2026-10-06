@@ -29,7 +29,7 @@ def mock_bot(tmp_path):
     config.web.enabled = True
     config.web.auth_token = ""
 
-    bot = RoostooAutonomousBot(config)
+    bot = RoostooAutonomousBot(config, data_dir=str(tmp_path))
     bot.order_manager.persistence_file = str(tmp_path / "orders.json")
     bot.portfolio.persistence_file = str(tmp_path / "portfolio.json")
     bot.portfolio.positions.clear()
@@ -106,7 +106,7 @@ def test_reconciliation_syncs_and_logs_roostoo_mock_trades(tmp_path):
     cfg.audit.api_log_file = str(tmp_path / "api.jsonl")
     cfg.audit.trade_log_file = str(tmp_path / "trade_log.csv")
 
-    bot = RoostooAutonomousBot(cfg)
+    bot = RoostooAutonomousBot(cfg, data_dir=str(tmp_path))
     bot.order_manager.persistence_file = str(tmp_path / "orders.json")
     bot.portfolio.persistence_file = str(tmp_path / "portfolio.json")
 

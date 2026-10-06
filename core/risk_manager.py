@@ -8,12 +8,15 @@ and maximum drawdown breaker (6.0% -> permanent halt and liquidation).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import json
 import math
+from pathlib import Path
 import time
 from typing import Any, Dict, Optional, Tuple
 
-from config.trading_params import RiskControlsConfig, TrailingStopConfig
+from config.trading_params import FeesConfig, RiskControlsConfig, RiskGovernorConfig, TrailingStopConfig
+from core.risk_governor import GovernorEvaluation, RiskGovernor, RiskState
 from core.strategy_engine import Signal
 from logs.audit_logger import AuditLogger
 from state.portfolio_tracker import PortfolioTracker
@@ -31,6 +34,12 @@ class RiskDecision:
     risk_pct: float = 0.0
     reason: str = ""
     circuit_breaker_active: bool = False
+    risk_state: str = "NORMAL"
+    recovery_mode: bool = False
+    expected_edge: float = 0.0
+    min_required_edge: float = 0.0
+    sizing_multiplier: float = 1.0
+    telemetry: Dict[str, Any] = field(default_factory=dict)
 
 
 class RiskManager:
@@ -49,6 +58,10 @@ class RiskManager:
         max_open_positions: int = 2,
         audit_logger: Optional[AuditLogger] = None,
         order_manager: Optional[Any] = None,
+        risk_governor: Optional[RiskGovernor] = None,
+        governor_config: Optional[RiskGovernorConfig] = None,
+        fees_config: Optional[FeesConfig] = None,
+        persistence_file: Optional[str] = None,
     ):
         self.portfolio = portfolio
         self.risk_config = risk_config or RiskControlsConfig()
@@ -59,10 +72,51 @@ class RiskManager:
         self.max_open_positions = max_open_positions
         self.audit_logger = audit_logger
         self.order_manager = order_manager
+        self.persistence_file = Path(persistence_file) if persistence_file else None
+        if self.persistence_file:
+            self.persistence_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Circuit breaker states
         self.permanent_kill_switch: bool = False
         self.freeze_until_timestamp: float = 0.0
+
+        # Institutional Risk Governor (Features 1-12)
+        gov_persist = str(self.persistence_file.parent / "risk_governor_state.json") if self.persistence_file else None
+        self.governor = risk_governor or RiskGovernor(config=governor_config, fees_config=fees_config, persistence_file=gov_persist)
+
+        # Restore persisted state across restarts
+        if self.persistence_file:
+            self.load_from_disk()
+
+    def _persist(self) -> None:
+        """Atomic persistence for circuit breaker state across restarts."""
+        if not self.persistence_file:
+            return
+        try:
+            data = {
+                "version": 1,
+                "timestamp": time.time(),
+                "permanent_kill_switch": self.permanent_kill_switch,
+                "freeze_until_timestamp": self.freeze_until_timestamp,
+            }
+            tmp_file = self.persistence_file.with_suffix(".tmp")
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            tmp_file.replace(self.persistence_file)
+        except Exception:
+            pass
+
+    def load_from_disk(self) -> None:
+        """Load persisted breaker state on startup."""
+        if not self.persistence_file or not self.persistence_file.exists():
+            return
+        try:
+            with open(self.persistence_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self.permanent_kill_switch = bool(data.get("permanent_kill_switch", False))
+            self.freeze_until_timestamp = float(data.get("freeze_until_timestamp", 0.0))
+        except Exception:
+            pass
 
     @property
     def is_frozen(self) -> bool:
@@ -72,6 +126,7 @@ class RiskManager:
         """Reset circuit breaker flags when reconciliation aligns capital or operator clears freeze."""
         self.permanent_kill_switch = False
         self.freeze_until_timestamp = 0.0
+        self._persist()
 
 
     def check_circuit_breakers(self) -> Tuple[bool, str]:
@@ -104,6 +159,7 @@ class RiskManager:
                     action="LIQUIDATE_ALL_PERMANENT_HALT",
                     reason="Portfolio peak-to-trough drawdown reached 6.0% maximum circuit breaker",
                 )
+            self._persist()
             return True, "MAX_DRAWDOWN_BREAKER_TRIGGERED"
 
         # 2. Check Rolling 24-hour Drawdown (Section 17.1: 3.5%)
@@ -120,6 +176,7 @@ class RiskManager:
                     freeze_until=freeze_str,
                     reason="Rolling 24h drawdown reached 3.5%. Entries frozen for 6 hours.",
                 )
+            self._persist()
             return True, "ROLLING_DRAWDOWN_BREAKER_TRIGGERED"
 
         return False, "Normal Risk State"
@@ -128,6 +185,7 @@ class RiskManager:
         self,
         signal: Signal,
         symbol_precision: Optional[Dict[str, Any]] = None,
+        regime_info: Optional[Any] = None,
     ) -> RiskDecision:
         """
         Validate and size incoming trade signals.
@@ -281,9 +339,55 @@ class RiskManager:
             )
 
         # ---------------------------------------------------------------------
-        # Position Sizing (Section 16)
-        # Risk Capital = Portfolio Equity * Risk % (Default 1.0%)
-        # Position Quantity = Risk Capital / abs(Entry Price - Stop Price)
+        # Institutional Risk Governor Evaluation (Features 1-12)
+        # ---------------------------------------------------------------------
+        if getattr(self, "governor", None) and getattr(self.governor.config, "enabled", True):
+            gov_eval = self.governor.evaluate_signal(
+                signal=signal,
+                portfolio=self.portfolio,
+                symbol_precision=symbol_precision,
+                regime_info=regime_info,
+                enforce_drawdown=self.risk_config.enforce_circuit_breakers,
+            )
+            if not gov_eval.approved:
+                return RiskDecision(
+                    approved=False,
+                    adjusted_quantity=0.0,
+                    adjusted_price=entry_px,
+                    stop_loss=stop_px,
+                    take_profit_1=signal.take_profit_1,
+                    take_profit_2=signal.take_profit_2,
+                    risk_capital=0.0,
+                    risk_pct=0.0,
+                    reason=gov_eval.rejection_reason,
+                    risk_state=gov_eval.risk_state.value if hasattr(gov_eval.risk_state, "value") else str(gov_eval.risk_state),
+                    recovery_mode=gov_eval.recovery_mode_active,
+                    expected_edge=gov_eval.expected_edge,
+                    min_required_edge=gov_eval.min_required_edge,
+                    sizing_multiplier=gov_eval.combined_multiplier,
+                    telemetry=gov_eval.details,
+                )
+
+            return RiskDecision(
+                approved=True,
+                adjusted_quantity=gov_eval.adjusted_quantity,
+                adjusted_price=entry_px,
+                stop_loss=stop_px,
+                take_profit_1=signal.take_profit_1,
+                take_profit_2=signal.take_profit_2,
+                risk_capital=gov_eval.risk_capital,
+                risk_pct=gov_eval.risk_pct,
+                reason=f"Approved: Sized under dynamic governor ({gov_eval.risk_state.value}, notional=${gov_eval.target_notional:.2f})",
+                risk_state=gov_eval.risk_state.value if hasattr(gov_eval.risk_state, "value") else str(gov_eval.risk_state),
+                recovery_mode=gov_eval.recovery_mode_active,
+                expected_edge=gov_eval.expected_edge,
+                min_required_edge=gov_eval.min_required_edge,
+                sizing_multiplier=gov_eval.combined_multiplier,
+                telemetry=gov_eval.details,
+            )
+
+        # ---------------------------------------------------------------------
+        # Fallback Position Sizing (if governor disabled)
         # ---------------------------------------------------------------------
         req_notional = float(signal.metadata.get("notional_usd", 0.0)) if signal.metadata else 0.0
         if req_notional > 0:
@@ -294,7 +398,7 @@ class RiskManager:
             risk_capital = desired_quantity * stop_distance
             risk_pct = risk_capital / equity if equity > 0 else 0.0
         else:
-            risk_pct = min(self.max_risk_per_trade_pct, 0.015)  # Strict cap at 1.5%
+            risk_pct = min(self.max_risk_per_trade_pct, 0.015)
             risk_capital = equity * risk_pct
             desired_quantity = risk_capital / stop_distance
             desired_notional = desired_quantity * entry_px
@@ -326,7 +430,6 @@ class RiskManager:
             amount_precision = int(symbol_precision.get("AmountPrecision", 6))
             min_order_usd = float(symbol_precision.get("MiniOrder", 1.0))
 
-        # Truncate quantity down to precision
         factor = 10 ** amount_precision
         adjusted_qty = math.floor(desired_quantity * factor) / factor
 
@@ -358,6 +461,42 @@ class RiskManager:
             risk_pct=actual_risk_pct,
             reason="Approved: Position sized under 1.0% risk, 5% cash reserve, and 100% exposure limits.",
         )
+
+    def record_trade_fill(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        price: float,
+        fee: float = 0.0,
+        realized_pnl: float = 0.0,
+        hold_duration: float = 0.0,
+        exit_reason: str = "",
+        timestamp: Optional[float] = None,
+    ) -> None:
+        """Update risk governor state upon trade fill."""
+        if hasattr(self, "governor") and self.governor:
+            now = timestamp or time.time()
+            if side.upper() == "BUY":
+                self.governor.on_trade_entry(symbol, price, now)
+            elif side.upper() == "SELL":
+                self.governor.on_trade_exit(
+                    symbol=symbol,
+                    side=side,
+                    price=price,
+                    quantity=quantity,
+                    realized_pnl=realized_pnl,
+                    fee=fee,
+                    hold_duration=hold_duration,
+                    exit_reason=exit_reason,
+                    timestamp=now,
+                )
+
+    def get_governor_telemetry(self) -> Dict[str, Any]:
+        """Export telemetry snapshot from the risk governor."""
+        if hasattr(self, "governor") and self.governor:
+            return self.governor.get_telemetry_snapshot()
+        return {}
 
     def update_trailing_stop(self, symbol: str, current_price: float, atr: float = 0.0) -> Optional[float]:
         """

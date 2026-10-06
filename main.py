@@ -12,6 +12,7 @@ import signal
 import sys
 import time
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
@@ -43,11 +44,13 @@ class RoostooAutonomousBot:
     Production Autonomous Trading Bot for Roostoo Mock Exchange.
     """
 
-    def __init__(self, config: AppConfig):
+    def __init__(self, config: AppConfig, data_dir: Optional[str] = "data"):
         self.config = config
         self.is_running = False
         self.git_commit = get_git_commit_sha()
-
+        self.data_dir = Path(data_dir) if data_dir else None
+        if self.data_dir:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
 
         # 1. Audit Logger with SHA-256 hash chaining
         self.logger = AuditLogger(
@@ -66,11 +69,15 @@ class RoostooAutonomousBot:
         )
 
         # 3. State Management & Accounting Ledgers
-        self.order_manager = OrderStateManager(persistence_file="data/order_state.json")
+        order_state_path = str(self.data_dir / "order_state.json") if self.data_dir else None
+        portfolio_state_path = str(self.data_dir / "portfolio_state.json") if self.data_dir else None
+        risk_state_path = str(self.data_dir / "risk_manager_state.json") if self.data_dir else None
+
+        self.order_manager = OrderStateManager(persistence_file=order_state_path)
         self.portfolio = PortfolioTracker(
             initial_capital=config.portfolio.initial_capital,
             min_cash_reserve_pct=config.portfolio.min_cash_reserve_pct,
-            persistence_file="data/portfolio_state.json",
+            persistence_file=portfolio_state_path,
         )
 
         # 4. Universe Management
@@ -100,6 +107,9 @@ class RoostooAutonomousBot:
             max_open_positions=config.portfolio.max_open_positions,
             order_manager=self.order_manager,
             audit_logger=self.logger,
+            governor_config=getattr(config, "risk_governor", None),
+            fees_config=config.fees,
+            persistence_file=risk_state_path,
         )
         self.executor = OrderExecutor(
             config=config,
@@ -586,55 +596,73 @@ class RoostooAutonomousBot:
                 slippage_pct=self.config.fees.slippage_pct,
             )
 
-            if signal.direction != "NO_TRADE":
-                # Candle-level signal deduplication (Section 3C)
-                candle_ts = int(df_5m["timestamp"].iloc[-1]) if "timestamp" in df_5m.columns else int(time.time() / 300) * 300
-                sig_key = f"{symbol}_{candle_ts}_{signal.direction}"
-                if sig_key in self._processed_signals:
-                    continue
-                self._processed_signals.add(sig_key)
-                if time.time() - self._last_signal_cleanup > 3600:
-                    self._processed_signals.clear()
-                    self._last_signal_cleanup = time.time()
-                self.last_signal = f"{signal.direction} {symbol} via {signal.strategy} (conf={signal.confidence:.2f})"
-                self.active_strategy = signal.strategy
-                self.signal_history.append({
-                    "timestamp": int(time.time() * 1000),
-                    "symbol": symbol,
-                    "direction": signal.direction,
-                    "strategy": signal.strategy,
-                    "confidence": signal.confidence,
-                    "entry_price": signal.entry_price,
-                    "stop_loss": signal.stop_loss,
-                    "take_profit_1": signal.take_profit_1,
-                    "take_profit_2": signal.take_profit_2,
-                    "expected_rr": signal.expected_rr,
-                    "reason": signal.reason,
-                    "regime": signal.regime,
-                })
-                if len(self.signal_history) > 100:
-                    self.signal_history.pop(0)
+            if signal.direction == "NO_TRADE":
+                if hasattr(self.risk_manager, "governor") and hasattr(self.risk_manager.governor, "signal_lifecycle"):
+                    self.risk_manager.governor.signal_lifecycle.on_market_bar(symbol, "NO_TRADE", is_no_trade=True)
+                continue
 
-                # Risk Validation and Sizing
-                sym_prec = self.executor.get_symbol_precision(symbol)
-                risk_decision = self.risk_manager.evaluate_signal(signal, symbol_precision=sym_prec)
+            # Candle-level signal deduplication (Section 3C)
+            candle_ts = int(df_5m["timestamp"].iloc[-1]) if "timestamp" in df_5m.columns else int(time.time() / 300) * 300
+            sig_key = f"{symbol}_{candle_ts}_{signal.direction}"
+            if sig_key in self._processed_signals:
+                continue
+            self._processed_signals.add(sig_key)
+            if time.time() - self._last_signal_cleanup > 3600:
+                self._processed_signals.clear()
+                self._last_signal_cleanup = time.time()
+            self.last_signal = f"{signal.direction} {symbol} via {signal.strategy} (conf={signal.confidence:.2f})"
+            self.active_strategy = signal.strategy
+            self.signal_history.append({
+                "timestamp": int(time.time() * 1000),
+                "symbol": symbol,
+                "direction": signal.direction,
+                "strategy": signal.strategy,
+                "confidence": signal.confidence,
+                "entry_price": signal.entry_price,
+                "stop_loss": signal.stop_loss,
+                "take_profit_1": signal.take_profit_1,
+                "take_profit_2": signal.take_profit_2,
+                "expected_rr": signal.expected_rr,
+                "reason": signal.reason,
+                "regime": signal.regime,
+            })
+            if len(self.signal_history) > 100:
+                self.signal_history.pop(0)
 
-                curr_px = mark_prices.get(symbol, signal.entry_price)
-                order = self.executor.execute_decision(signal, risk_decision, curr_px)
-                if order:
-                    self.last_order = f"{order.side} {symbol} qty={order.quantity} px={order.price:.2f} ({order.status.value})"
-                    if getattr(self, "notifier", None):
-                        self.notifier.notify_trade_entry(
-                            symbol=symbol,
-                            side=order.side,
-                            strategy=signal.strategy,
-                            price=order.price,
-                            quantity=order.quantity,
-                            notional_usd=order.quantity * order.price,
-                            stop_loss=signal.stop_loss,
-                            take_profit=signal.take_profit_1,
-                            confidence=signal.confidence,
-                        )
+            # Risk Validation and Sizing
+            sym_prec = self.executor.get_symbol_precision(symbol)
+            risk_decision = self.risk_manager.evaluate_signal(signal, symbol_precision=sym_prec)
+
+            if not risk_decision.approved:
+                self.logger.log_system_event(
+                    "ENTRY_REJECTED",
+                    f"[ENTRY_REJECTED] {risk_decision.reason} symbol={symbol} strategy={signal.strategy}",
+                    {
+                        "symbol": symbol,
+                        "strategy": signal.strategy,
+                        "reason": risk_decision.reason,
+                        "risk_state": getattr(risk_decision, "risk_state", "NORMAL"),
+                        "recovery_mode": getattr(risk_decision, "recovery_mode", False),
+                    }
+                )
+                continue
+
+            curr_px = mark_prices.get(symbol, signal.entry_price)
+            order = self.executor.execute_decision(signal, risk_decision, curr_px)
+            if order:
+                self.last_order = f"{order.side} {symbol} qty={order.quantity} px={order.price:.2f} ({order.status.value})"
+                if getattr(self, "notifier", None):
+                    self.notifier.notify_trade_entry(
+                        symbol=symbol,
+                        side=order.side,
+                        strategy=signal.strategy,
+                        price=order.price,
+                        quantity=order.quantity,
+                        notional_usd=order.quantity * order.price,
+                        stop_loss=signal.stop_loss,
+                        take_profit=signal.take_profit_1,
+                        confidence=signal.confidence,
+                    )
 
     def render_observability_dashboard(self) -> None:
         """
@@ -670,6 +698,12 @@ class RoostooAutonomousBot:
             peak_equity=self.portfolio.peak_equity,
         )
 
+        gov_snap = self.risk_manager.get_governor_telemetry() if hasattr(self.risk_manager, "get_governor_telemetry") else {}
+        risk_state_str = gov_snap.get("risk_state", "NORMAL")
+        rec_mode_str = "ACTIVE (De-risking)" if gov_snap.get("recovery_mode", False) else "INACTIVE"
+        active_cds = gov_snap.get("active_cooldowns", {})
+        cd_info = f"{len(active_cds)} symbols ({', '.join(active_cds.keys())[:25]})" if active_cds else "None"
+
         dashboard = (
             f"\n"
             f"+----------------------------------------------------------------------+\n"
@@ -677,6 +711,9 @@ class RoostooAutonomousBot:
             f"+----------------------------------------------------------------------+\n"
             f"| MODE:                {mode_str:<47} |\n"
             f"| BOT STATUS:          {'RUNNING AUTONOMOUSLY':<47} |\n"
+            f"| RISK STATE:          {risk_state_str:<47} |\n"
+            f"| RECOVERY MODE:       {rec_mode_str:<47} |\n"
+            f"| ACTIVE COOLDOWNS:    {cd_info[:47]:<47} |\n"
             f"| LAST MARKET UPDATE:  {self.last_market_update:<47} |\n"
             f"| LAST API REQUEST:    {self.last_api_request:<47} |\n"
             f"| PORTFOLIO EQUITY:    ${eq:>12,.2f} USD {'':<31} |\n"
@@ -845,9 +882,8 @@ class RoostooAutonomousBot:
 
         self.portfolio.peak_equity = self.portfolio.total_equity
         curr_eq = self.portfolio.total_equity
-        self.portfolio.equity_curve = [s for s in self.portfolio.equity_curve if s.equity <= curr_eq * 1.05]
-        if not self.portfolio.equity_curve:
-            self.portfolio._record_snapshot()
+        self.portfolio.equity_curve = [s for s in self.portfolio.equity_curve if s.equity <= curr_eq]
+        self.portfolio._record_snapshot()
         self.portfolio._persist()
         self.logger.log_system_event("RISK_RESET", "Operator manually reset risk circuit breaker freeze via dashboard")
         return {"reset": True, "is_frozen": False, "permanent_breaker": False}
@@ -855,6 +891,16 @@ class RoostooAutonomousBot:
 
     def handle_manual_trade(self, symbol: str, side: str, notional_usd: float = 0.0) -> Dict[str, Any]:
         """Evaluate and execute manual trade with strict risk sizing."""
+        if getattr(self.config, "is_live", False) or os.getenv("COMPETITION_LIVE", "").lower() in ("true", "1"):
+            self.logger.log_system_event(
+                "MANUAL_TRADE_FORBIDDEN",
+                "Manual trade injection rejected: strictly forbidden in competition live mode (100% autonomous execution rule)."
+            )
+            return {
+                "success": False,
+                "error": "MANUAL_TRADE_FORBIDDEN: Manual trading is strictly prohibited in competition live mode to enforce 100% autonomous execution compliance."
+            }
+
         snap = self.market_data.latest_tickers.get(symbol)
         curr_px = snap.last_price if snap else 0.0
         if curr_px <= 0:

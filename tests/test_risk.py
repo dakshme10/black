@@ -230,7 +230,7 @@ def test_bot_run_cycle_circuit_breaker_flooding_suppressed(tmp_path):
     config.audit.trade_log_file = str(tmp_path / "trade_log.csv")
     config.web.enabled = False
 
-    bot = RoostooAutonomousBot(config)
+    bot = RoostooAutonomousBot(config, data_dir=str(tmp_path))
     bot.order_manager.persistence_file = str(tmp_path / "orders.json")
     bot.portfolio.persistence_file = str(tmp_path / "portfolio.json")
     bot.portfolio.positions.clear()

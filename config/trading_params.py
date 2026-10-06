@@ -51,6 +51,92 @@ class RiskControlsConfig:
 
 
 @dataclass
+class TradeFrequencyConfig:
+    enabled: bool = True
+    minimum_hold_seconds: float = 300.0
+    minimum_seconds_between_same_symbol_entries: float = 300.0
+    cooldown_after_loss_seconds: float = 900.0
+    cooldown_after_profit_seconds: float = 120.0
+
+
+@dataclass
+class SignalFreshnessConfig:
+    enabled: bool = True
+    require_reset_before_reentry: bool = True
+    max_signal_age_seconds: float = 300.0
+
+
+@dataclass
+class ExpectedEdgeConfig:
+    enabled: bool = True
+    min_edge_pct: float = 0.0040  # 40 bps (0.40%) minimum gross edge
+    fee_slippage_buffer_pct: float = 0.0016  # 16 bps buffer above round-trip fees (0.24% + 0.16% = 0.40%)
+    min_risk_reward: float = 1.5
+
+
+@dataclass
+class DynamicPositionSizingConfig:
+    enabled: bool = True
+    base_risk_per_trade_pct: float = 0.010  # 1.0% equity risk
+    max_major_position_pct: float = 0.50    # 50% max for BTC/ETH (aligns with portfolio cap)
+    max_alt_position_pct: float = 0.25      # 25% max for altcoins
+    quality_scaling_enabled: bool = True
+    regime_scaling_enabled: bool = True
+
+
+@dataclass
+class DrawdownGovernorConfig:
+    enabled: bool = True
+    caution_drawdown_pct: float = 0.015       # 1.5% DD -> CAUTION (0.70x risk)
+    reduced_risk_drawdown_pct: float = 0.025  # 2.5% DD -> REDUCED_RISK (0.40x risk, recovery mode)
+    defensive_drawdown_pct: float = 0.035     # 3.5% DD -> DEFENSIVE (0.20x risk, top quality only)
+    emergency_drawdown_pct: float = 0.050     # 5.0% DD -> EMERGENCY (0.00x risk, block all fresh entries)
+
+
+@dataclass
+class RecoveryModeConfig:
+    enabled: bool = True
+    activation_drawdown_pct: float = 0.025    # Activate recovery mode at 2.5% DD
+    deactivation_drawdown_pct: float = 0.010  # Return to normal only when DD < 1.0%
+    min_consecutive_wins_to_deactivate: int = 2
+    position_size_multiplier: float = 0.50
+    stricter_edge_multiplier: float = 1.25
+    stricter_cooldown_multiplier: float = 1.50
+
+
+@dataclass
+class SymbolThrottlingConfig:
+    enabled: bool = True
+    lookback_trades: int = 10
+    max_consecutive_losses: int = 2
+    throttled_cooldown_seconds: float = 1800.0  # 30 min cooldown after streak of losses
+    throttled_size_multiplier: float = 0.50
+
+
+@dataclass
+class ExposureLimitsConfig:
+    enabled: bool = True
+    max_gross_exposure_pct: float = 1.00      # 100% total equity
+    max_concurrent_positions: int = 2
+    max_alt_exposure_pct: float = 0.50        # Max 50% combined altcoin exposure
+    max_alt_concurrent_positions: int = 1     # Max 1 altcoin at a time
+    majors: List[str] = field(default_factory=lambda: ["BTC/USD", "ETH/USD", "BTCUSDT", "ETHUSDT"])
+
+
+@dataclass
+class RiskGovernorConfig:
+    enabled: bool = True
+    trade_frequency: TradeFrequencyConfig = field(default_factory=TradeFrequencyConfig)
+    signal_freshness: SignalFreshnessConfig = field(default_factory=SignalFreshnessConfig)
+    expected_edge: ExpectedEdgeConfig = field(default_factory=ExpectedEdgeConfig)
+    position_sizing: DynamicPositionSizingConfig = field(default_factory=DynamicPositionSizingConfig)
+    drawdown_governor: DrawdownGovernorConfig = field(default_factory=DrawdownGovernorConfig)
+    recovery_mode: RecoveryModeConfig = field(default_factory=RecoveryModeConfig)
+    symbol_throttling: SymbolThrottlingConfig = field(default_factory=SymbolThrottlingConfig)
+    exposure_limits: ExposureLimitsConfig = field(default_factory=ExposureLimitsConfig)
+
+
+@dataclass
 class FeesConfig:
     maker_fee_pct: float = 0.0005  # 0.05%
     taker_fee_pct: float = 0.0010  # 0.10%
@@ -223,6 +309,7 @@ class AppConfig:
     exchange: ExchangeConfig = field(default_factory=ExchangeConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
     risk_controls: RiskControlsConfig = field(default_factory=RiskControlsConfig)
+    risk_governor: RiskGovernorConfig = field(default_factory=RiskGovernorConfig)
     fees: FeesConfig = field(default_factory=FeesConfig)
     trailing_stop: TrailingStopConfig = field(default_factory=TrailingStopConfig)
     autosl: AutoSLConfig = field(default_factory=AutoSLConfig)
@@ -304,6 +391,79 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
             emergency_recovery_sl_pct=float(rc.get("emergency_recovery_sl_pct", app_cfg.risk_controls.emergency_recovery_sl_pct)),
             entry_cooldown_seconds=float(rc.get("entry_cooldown_seconds", app_cfg.risk_controls.entry_cooldown_seconds)),
             candle_warmup_candles=int(rc.get("candle_warmup_candles", app_cfg.risk_controls.candle_warmup_candles)),
+        )
+
+    # Populate risk governor (Features 1-12)
+    raw_rg = raw_cfg.get("risk_governor") or raw_cfg.get("risk", {})
+    if raw_rg:
+        tf_raw = raw_rg.get("trade_frequency", {})
+        sf_raw = raw_rg.get("signal_freshness", {})
+        ee_raw = raw_rg.get("expected_edge", {})
+        ps_raw = raw_rg.get("position_sizing", {})
+        dg_raw = raw_rg.get("drawdown_governor", {})
+        rm_raw = raw_rg.get("recovery_mode", {})
+        st_raw = raw_rg.get("symbol_throttling", {})
+        el_raw = raw_rg.get("exposure_limits", {})
+
+        app_cfg.risk_governor = RiskGovernorConfig(
+            enabled=bool(raw_rg.get("enabled", True)),
+            trade_frequency=TradeFrequencyConfig(
+                enabled=bool(tf_raw.get("enabled", True)),
+                minimum_hold_seconds=float(tf_raw.get("minimum_hold_seconds", 300.0)),
+                minimum_seconds_between_same_symbol_entries=float(tf_raw.get("minimum_seconds_between_same_symbol_entries", 300.0)),
+                cooldown_after_loss_seconds=float(tf_raw.get("cooldown_after_loss_seconds", 900.0)),
+                cooldown_after_profit_seconds=float(tf_raw.get("cooldown_after_profit_seconds", 120.0)),
+            ),
+            signal_freshness=SignalFreshnessConfig(
+                enabled=bool(sf_raw.get("enabled", True)),
+                require_reset_before_reentry=bool(sf_raw.get("require_reset_before_reentry", True)),
+                max_signal_age_seconds=float(sf_raw.get("max_signal_age_seconds", 300.0)),
+            ),
+            expected_edge=ExpectedEdgeConfig(
+                enabled=bool(ee_raw.get("enabled", True)),
+                min_edge_pct=float(ee_raw.get("min_edge_pct", 0.0040)),
+                fee_slippage_buffer_pct=float(ee_raw.get("fee_slippage_buffer_pct", 0.0016)),
+                min_risk_reward=float(ee_raw.get("min_risk_reward", 1.5)),
+            ),
+            position_sizing=DynamicPositionSizingConfig(
+                enabled=bool(ps_raw.get("enabled", True)),
+                base_risk_per_trade_pct=float(ps_raw.get("base_risk_per_trade_pct", 0.010)),
+                max_major_position_pct=float(ps_raw.get("max_major_position_pct", 0.50)),
+                max_alt_position_pct=float(ps_raw.get("max_alt_position_pct", 0.25)),
+                quality_scaling_enabled=bool(ps_raw.get("quality_scaling_enabled", True)),
+                regime_scaling_enabled=bool(ps_raw.get("regime_scaling_enabled", True)),
+            ),
+            drawdown_governor=DrawdownGovernorConfig(
+                enabled=bool(dg_raw.get("enabled", True)),
+                caution_drawdown_pct=float(dg_raw.get("caution_drawdown_pct", 0.015)),
+                reduced_risk_drawdown_pct=float(dg_raw.get("reduced_risk_drawdown_pct", 0.025)),
+                defensive_drawdown_pct=float(dg_raw.get("defensive_drawdown_pct", 0.035)),
+                emergency_drawdown_pct=float(dg_raw.get("emergency_drawdown_pct", 0.050)),
+            ),
+            recovery_mode=RecoveryModeConfig(
+                enabled=bool(rm_raw.get("enabled", True)),
+                activation_drawdown_pct=float(rm_raw.get("activation_drawdown_pct", 0.025)),
+                deactivation_drawdown_pct=float(rm_raw.get("deactivation_drawdown_pct", 0.010)),
+                min_consecutive_wins_to_deactivate=int(rm_raw.get("min_consecutive_wins_to_deactivate", 2)),
+                position_size_multiplier=float(rm_raw.get("position_size_multiplier", 0.50)),
+                stricter_edge_multiplier=float(rm_raw.get("stricter_edge_multiplier", 1.25)),
+                stricter_cooldown_multiplier=float(rm_raw.get("stricter_cooldown_multiplier", 1.50)),
+            ),
+            symbol_throttling=SymbolThrottlingConfig(
+                enabled=bool(st_raw.get("enabled", True)),
+                lookback_trades=int(st_raw.get("lookback_trades", 10)),
+                max_consecutive_losses=int(st_raw.get("max_consecutive_losses", 2)),
+                throttled_cooldown_seconds=float(st_raw.get("throttled_cooldown_seconds", 1800.0)),
+                throttled_size_multiplier=float(st_raw.get("throttled_size_multiplier", 0.50)),
+            ),
+            exposure_limits=ExposureLimitsConfig(
+                enabled=bool(el_raw.get("enabled", True)),
+                max_gross_exposure_pct=float(el_raw.get("max_gross_exposure_pct", 1.00)),
+                max_concurrent_positions=int(el_raw.get("max_concurrent_positions", 2)),
+                max_alt_exposure_pct=float(el_raw.get("max_alt_exposure_pct", 0.50)),
+                max_alt_concurrent_positions=int(el_raw.get("max_alt_concurrent_positions", 1)),
+                majors=el_raw.get("majors", ["BTC/USD", "ETH/USD", "BTCUSDT", "ETHUSDT"]),
+            ),
         )
 
     # Populate fees
@@ -399,7 +559,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
                 tp1_r_multiple=float(ls_raw.get("tp1_r_multiple", 2.0)),
             ),
             cvd_absorption=CvdAbsorptionConfig(
-                enabled=bool(cvd_raw.get("enabled", False)),
+                enabled=False,  # Hard lock: Strategy C is decommissioned for competition compliance
                 delta_period=int(cvd_raw.get("delta_period", 14)),
                 divergence_window=int(cvd_raw.get("divergence_window", 5)),
                 require_vwap_reclaim=bool(cvd_raw.get("require_vwap_reclaim", True)),
