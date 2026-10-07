@@ -147,33 +147,8 @@ class WebServer:
         async def get_positions():
             positions = []
             for sym, pos in self.bot.portfolio.positions.items():
-                positions.append({
-                    "symbol": pos.symbol,
-                    "base_coin": pos.base_coin,
-                    "side": getattr(pos, "side", "BUY"),
-                    "quantity": pos.quantity,
-                    "entry_price": pos.entry_price,
-                    "current_price": pos.current_price,
-                    "notional_value": pos.notional_value,
-                    "unrealized_pnl": pos.unrealized_pnl,
-                    "unrealized_pnl_pct": (pos.unrealized_pnl / (pos.entry_price * pos.quantity) * 100.0) if (pos.entry_price * pos.quantity) > 0 else 0.0,
-                    "realized_pnl": pos.realized_pnl,
-                    "strategy": pos.strategy,
-                    "stop_loss": pos.stop_loss,
-                    "take_profit_1": pos.take_profit_1,
-                    "take_profit_2": pos.take_profit_2,
-                    "opened_timestamp": pos.opened_timestamp,
-                    "highest_price": pos.highest_price,
-                    "phase": getattr(pos, "phase", "PHASE_1_VALIDATION"),
-                    "validation_survived": getattr(pos, "validation_survived", False),
-                    "candles_since_entry": getattr(pos, "candles_since_entry", 0),
-                    "entry_breakout_level": getattr(pos, "entry_breakout_level", pos.entry_price),
-                    "broker_sl_price": getattr(pos, "broker_sl_price", pos.stop_loss),
-                    "sl_percent": getattr(pos, "sl_percent", 2.0),
-                    "locked_profit": getattr(pos, "locked_profit", 0.0),
-                    "momentum_status": getattr(pos, "momentum_status", "NORMAL"),
-                    "extension_level": getattr(pos, "extension_level", 0),
-                })
+                if pos.quantity > 0:
+                    positions.append(self._pos_to_dict(pos))
             return JSONResponse(positions)
 
         @self.app.get("/api/orders")
@@ -342,6 +317,93 @@ class WebServer:
                     if websocket in self.active_connections:
                         self.active_connections.remove(websocket)
 
+    def _pos_to_dict(self, pos) -> Dict[str, Any]:
+        """Convert a portfolio Position into a rich AutoSL-compatible dictionary."""
+        sym = getattr(pos, "symbol", "")
+        base = getattr(pos, "base_coin", sym.split("/")[0] if "/" in sym else sym)
+        qty = float(getattr(pos, "quantity", 0.0))
+        entry_px = float(getattr(pos, "entry_price", 0.0))
+        curr_px = float(getattr(pos, "current_price", entry_px))
+        unrealized_pnl = float(getattr(pos, "unrealized_pnl", 0.0))
+        realized_pnl = float(getattr(pos, "realized_pnl", 0.0))
+
+        cost_basis = entry_px * qty
+        pnl_pct = (unrealized_pnl / cost_basis * 100.0) if cost_basis > 0 else 0.0
+
+        sl_val = float(getattr(pos, "stop_loss", 0.0))
+        tp1_val = float(getattr(pos, "take_profit_1", 0.0))
+        tp2_val = float(getattr(pos, "take_profit_2", 0.0))
+        init_sl = float(getattr(pos, "initial_stop_loss", sl_val) or sl_val)
+
+        mom_stat = getattr(pos, "momentum_status", "NORMAL")
+        ext_lvl = int(getattr(pos, "extension_level", 0))
+        val_surv = bool(getattr(pos, "validation_survived", False))
+        locked_pr = float(getattr(pos, "locked_profit", 0.0))
+        sl_pct_val = float(getattr(pos, "sl_percent", 2.0))
+        candles_cnt = int(getattr(pos, "candles_since_entry", 0))
+
+        if mom_stat.startswith("MOMENTUM_EXTENSION"):
+            trail_status = f"Momentum Ext Lvl {ext_lvl} (50% Locked)"
+        elif mom_stat == "FINAL_TRAILING":
+            trail_status = f"Final Trailing (SL: ${sl_val:.2f})"
+        elif val_surv:
+            if locked_pr > 0:
+                trail_status = f"Phase 2 Validated (+${locked_pr:.2f} Locked)"
+            else:
+                trail_status = f"Phase 2 Validated (Trailing SL {sl_pct_val:.1f}%)"
+        else:
+            trail_status = f"Phase 1 Validating (Candle {candles_cnt}/2)"
+
+        is_exiting = bool(getattr(pos, "is_exit_initiated", False) or getattr(pos, "exit_lock", False))
+        raw_state = getattr(pos, "exit_state", "OPEN")
+        if is_exiting:
+            pos_status = "EXITING"
+        elif raw_state in ("TP1_PENDING", "EXIT_PENDING", "CLOSED"):
+            pos_status = raw_state
+        elif val_surv:
+            pos_status = "VALIDATED"
+        else:
+            pos_status = "OPEN"
+
+        notional = getattr(pos, "notional_value", qty * curr_px)
+
+        return {
+            "symbol": sym,
+            "base_coin": base,
+            "side": getattr(pos, "side", "BUY"),
+            "quantity": qty,
+            "entry_price": entry_px,
+            "current_price": curr_px,
+            "notional_value": notional,
+            "unrealized_pnl": unrealized_pnl,
+            "unrealized_pnl_pct": pnl_pct,
+            "realized_pnl": realized_pnl,
+            "strategy": getattr(pos, "strategy", "MULTI_ENGINE") or "MULTI_ENGINE",
+            "stop_loss": sl_val,
+            "initial_stop_loss": init_sl,
+            "take_profit_1": tp1_val,
+            "take_profit_1_hit": bool(getattr(pos, "take_profit_1_hit", False)),
+            "take_profit_2": tp2_val,
+            "take_profit_2_hit": bool(getattr(pos, "take_profit_2_hit", False)),
+            "opened_timestamp": getattr(pos, "opened_timestamp", 0),
+            "highest_price": float(getattr(pos, "highest_price", curr_px)),
+            "peak_profit_points": float(getattr(pos, "peak_profit_points", 0.0)),
+            "trailing_status": trail_status,
+            "phase": getattr(pos, "phase", "PHASE_1_VALIDATION"),
+            "validation_survived": val_surv,
+            "candles_since_entry": candles_cnt,
+            "entry_breakout_level": float(getattr(pos, "entry_breakout_level", entry_px)),
+            "broker_sl_price": float(getattr(pos, "broker_sl_price", sl_val)),
+            "sl_percent": sl_pct_val,
+            "locked_profit": locked_pr,
+            "momentum_status": mom_stat,
+            "extension_level": ext_lvl,
+            "volume_drop_detected": bool(getattr(pos, "volume_drop_detected", False)),
+            "trailing_sl_active": bool(getattr(pos, "trailing_sl_active", False)),
+            "is_exit_initiated": is_exiting,
+            "status": pos_status,
+        }
+
     def _prepare_data(self) -> Dict[str, Any]:
         """
         Gathers complete real-time quantitative telemetry snapshot.
@@ -371,57 +433,7 @@ class WebServer:
         for sym, pos in port.positions.items():
             unrealized_pnl += pos.unrealized_pnl
             if pos.quantity > 0:
-                cost_basis = pos.entry_price * pos.quantity
-                pnl_pct = (pos.unrealized_pnl / cost_basis * 100.0) if cost_basis > 0 else 0.0
-
-                # Compute AutoSL trailing stop & lifecycle status
-                mom_stat = getattr(pos, "momentum_status", "NORMAL")
-                ext_lvl = getattr(pos, "extension_level", 0)
-                val_surv = getattr(pos, "validation_survived", False)
-                locked_pr = getattr(pos, "locked_profit", 0.0)
-                sl_pct_val = getattr(pos, "sl_percent", 2.0)
-                candles_cnt = getattr(pos, "candles_since_entry", 0)
-
-                if mom_stat.startswith("MOMENTUM_EXTENSION"):
-                    trail_status = f"Momentum Ext Lvl {ext_lvl} (50% Locked)"
-                elif mom_stat == "FINAL_TRAILING":
-                    trail_status = f"Final Trailing (SL: ${pos.stop_loss:.2f})"
-                elif val_surv:
-                    if locked_pr > 0:
-                        trail_status = f"Phase 2 Validated (+${locked_pr:.2f} Locked)"
-                    else:
-                        trail_status = f"Phase 2 Validated (Trailing SL {sl_pct_val:.1f}%)"
-                else:
-                    trail_status = f"Phase 1 Validating (Candle {candles_cnt}/2)"
-
-                active_positions_list.append({
-                    "symbol": pos.symbol,
-                    "base_coin": pos.base_coin,
-                    "side": getattr(pos, "side", "BUY"),
-                    "quantity": pos.quantity,
-                    "entry_price": pos.entry_price,
-                    "current_price": pos.current_price,
-                    "notional_value": pos.notional_value,
-                    "unrealized_pnl": pos.unrealized_pnl,
-                    "unrealized_pnl_pct": pnl_pct,
-                    "realized_pnl": pos.realized_pnl,
-                    "strategy": pos.strategy or "MULTI_ENGINE",
-                    "stop_loss": pos.stop_loss,
-                    "take_profit_1": pos.take_profit_1,
-                    "take_profit_2": pos.take_profit_2,
-                    "opened_timestamp": pos.opened_timestamp,
-                    "highest_price": pos.highest_price,
-                    "trailing_status": trail_status,
-                    "phase": getattr(pos, "phase", "PHASE_1_VALIDATION"),
-                    "validation_survived": val_surv,
-                    "candles_since_entry": candles_cnt,
-                    "entry_breakout_level": getattr(pos, "entry_breakout_level", pos.entry_price),
-                    "broker_sl_price": getattr(pos, "broker_sl_price", pos.stop_loss),
-                    "sl_percent": sl_pct_val,
-                    "locked_profit": locked_pr,
-                    "momentum_status": mom_stat,
-                    "extension_level": ext_lvl,
-                })
+                active_positions_list.append(self._pos_to_dict(pos))
 
         total_pnl = realized_pnl + unrealized_pnl
         current_dd = float(port.get_current_drawdown() * 100.0)

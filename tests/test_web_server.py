@@ -268,3 +268,199 @@ def test_logs_endpoint_and_telemetry_stream(mock_bot):
     data = res_status.json()
     assert "logs" in data
     assert len(data["logs"]) > 0
+
+
+def test_positions_endpoint_enriched_fields(mock_bot):
+    server = WebServer(mock_bot, port=8080)
+    client = TestClient(server.app)
+
+    # Seed a virtual position with AutoSL attributes
+    mock_bot.portfolio.record_fill(
+        symbol="BTC/USD",
+        side="BUY",
+        quantity=0.5,
+        price=80000.0,
+        fee=40.0,
+        strategy="VALUE_AREA",
+        stop_loss=79000.0,
+        take_profit_1=82000.0,
+        take_profit_2=84000.0,
+        entry_breakout_level=79800.0,
+    )
+    pos = mock_bot.portfolio.positions["BTC/USD"]
+    pos.locked_profit = 500.0
+    pos.validation_survived = True
+    pos.current_price = 81000.0
+    pos.unrealized_pnl = 0.5 * (81000.0 - 80000.0)
+
+    res = client.get("/api/positions")
+    assert res.status_code == 200
+    positions = res.json()
+    assert len(positions) == 1
+    p = positions[0]
+
+    assert p["symbol"] == "BTC/USD"
+    assert p["side"] == "BUY"
+    assert p["quantity"] == 0.5
+    assert p["entry_price"] == 80000.0
+    assert p["current_price"] == 81000.0
+    assert p["notional_value"] == 0.5 * 81000.0
+    assert p["unrealized_pnl"] == 500.0
+    assert p["unrealized_pnl_pct"] == pytest.approx(1.25, 0.01)
+    assert p["initial_stop_loss"] == 79000.0
+    assert p["stop_loss"] == 79000.0
+    assert p["locked_profit"] == 500.0
+    assert p["take_profit_1"] == 82000.0
+    assert p["take_profit_2"] == 84000.0
+    assert p["phase"] == "PHASE_2_VALIDATED"
+    assert p["status"] == "VALIDATED"
+    assert "Phase 2 Validated" in p["trailing_status"]
+
+
+def test_positions_empty_and_multi_positions(mock_bot):
+    server = WebServer(mock_bot, port=8080)
+    client = TestClient(server.app)
+
+    # Empty
+    res_empty = client.get("/api/positions")
+    assert res_empty.status_code == 200
+    assert res_empty.json() == []
+
+    # Two positions: BTC/USD and ETH/USD
+    mock_bot.portfolio.record_fill(
+        symbol="BTC/USD",
+        side="BUY",
+        quantity=0.25,
+        price=80000.0,
+        fee=20.0,
+        strategy="VALUE_AREA",
+        stop_loss=78400.0,
+        take_profit_1=82000.0,
+        take_profit_2=84000.0,
+    )
+    mock_bot.portfolio.record_fill(
+        symbol="ETH/USD",
+        side="BUY",
+        quantity=5.0,
+        price=3000.0,
+        fee=15.0,
+        strategy="LIQUIDITY_SWEEP",
+        stop_loss=2940.0,
+        take_profit_1=3100.0,
+        take_profit_2=3200.0,
+    )
+
+    res = client.get("/api/positions")
+    assert res.status_code == 200
+    positions = res.json()
+    assert len(positions) == 2
+    symbols = {p["symbol"] for p in positions}
+    assert symbols == {"BTC/USD", "ETH/USD"}
+
+
+def test_dashboard_html_contains_positions_elements(mock_bot):
+    server = WebServer(mock_bot, port=8080)
+    client = TestClient(server.app)
+
+    res = client.get("/")
+    assert res.status_code == 200
+    html = res.text
+    # Verify AutoSL Positions tab components
+    assert "pos-summary-grid" in html
+    assert "pos-toolbar" in html
+    assert "pos-search-input" in html
+    assert "pos-filter-btn" in html
+    assert "pos-table-card" in html
+    assert "pos-empty-state" in html
+    assert "pos-stale-banner" in html
+    assert "renderPositionsTable" in html
+    assert "togglePositionExpand" in html
+
+
+def test_positions_short_negative_and_flat_pnl(mock_bot):
+    server = WebServer(mock_bot, port=8080)
+    client = TestClient(server.app)
+
+    # Position 1: BTC/USD with negative PnL
+    mock_bot.portfolio.record_fill(
+        symbol="BTC/USD",
+        side="BUY",
+        quantity=0.1,
+        price=80000.0,
+        fee=10.0,
+        strategy="MOMENTUM",
+        stop_loss=78000.0,
+        take_profit_1=83000.0,
+    )
+    btc_pos = mock_bot.portfolio.positions["BTC/USD"]
+    btc_pos.current_price = 79000.0
+    btc_pos.unrealized_pnl = 0.1 * (79000.0 - 80000.0)  # -100.0
+
+    # Position 2: ETH/USD SHORT with positive PnL
+    from state.portfolio_tracker import Position
+    mock_bot.portfolio.positions["ETH/USD"] = Position(
+        symbol="ETH/USD",
+        base_coin="ETH",
+        side="SELL",
+        quantity=2.0,
+        entry_price=3200.0,
+        current_price=3100.0,
+        unrealized_pnl=200.0,
+        strategy="REVERSION",
+        stop_loss=3300.0,
+        take_profit_1=3000.0,
+    )
+
+    res = client.get("/api/positions")
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data) == 2
+
+    btc_dict = next(p for p in data if p["symbol"] == "BTC/USD")
+    eth_dict = next(p for p in data if p["symbol"] == "ETH/USD")
+
+    assert btc_dict["unrealized_pnl"] == -100.0
+    assert btc_dict["unrealized_pnl_pct"] < 0
+    assert eth_dict["side"] == "SELL"
+    assert eth_dict["unrealized_pnl"] == 200.0
+    assert eth_dict["unrealized_pnl_pct"] > 0
+
+
+def test_positions_telemetry_consistency_and_missing_attributes(mock_bot):
+    server = WebServer(mock_bot, port=8080)
+    client = TestClient(server.app)
+
+    # Bare position without extra AutoSL attributes
+    class BarePosition:
+        symbol = "SOL/USD"
+        quantity = 10.0
+        entry_price = 150.0
+        current_price = 155.0
+        unrealized_pnl = 50.0
+        realized_pnl = 0.0
+        strategy = "TEST"
+        side = "BUY"
+
+        @property
+        def notional_value(self):
+            return self.quantity * self.current_price
+
+    mock_bot.portfolio.positions["SOL/USD"] = BarePosition()
+
+    res = client.get("/api/positions")
+    assert res.status_code == 200
+    pos_data = res.json()
+    assert len(pos_data) == 1
+    p = pos_data[0]
+    assert p["symbol"] == "SOL/USD"
+    assert p["stop_loss"] == 0.0
+    assert p["phase"] == "PHASE_1_VALIDATION"
+    assert "Phase 1 Validating" in p["trailing_status"]
+
+    # Verify status/telemetry consistency
+    telemetry = server._prepare_data()
+    assert "positions" in telemetry
+    assert len(telemetry["positions"]) == 1
+    assert telemetry["positions"][0]["symbol"] == "SOL/USD"
+    assert telemetry["positions"][0]["notional_value"] == 1550.0
+

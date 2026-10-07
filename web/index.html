@@ -545,6 +545,354 @@
             background: rgba(255, 255, 255, 0.015);
         }
 
+        /* ========================================================================= */
+        /* POSITIONS TAB - AUTOSL ARCHITECTURE & STYLING                             */
+        /* ========================================================================= */
+        .pos-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 100%;
+        }
+
+        /* 1. Summary Ribbon */
+        .pos-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        .pos-summary-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            transition: all 0.2s ease;
+        }
+        .pos-summary-card:hover {
+            border-color: var(--border-bright);
+            background: var(--bg-card-hover);
+        }
+        .pos-card-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-dim);
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+        }
+        .pos-card-val {
+            font-size: 18px;
+            font-weight: 800;
+            color: #fff;
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+        .pos-card-sub {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+        .pos-card-desc {
+            font-size: 11px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* 2. Control Toolbar */
+        .pos-toolbar {
+            background: var(--bg-card-alt);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .pos-toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .pos-search-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .pos-search-icon {
+            position: absolute;
+            left: 10px;
+            font-size: 11px;
+            pointer-events: none;
+            color: var(--text-dim);
+        }
+        .pos-search-input {
+            background: #060912;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 28px 6px 30px;
+            color: #fff;
+            font-size: 12px;
+            font-family: inherit;
+            width: 220px;
+            transition: all 0.2s;
+            outline: none;
+        }
+        .pos-search-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 8px var(--accent-glow);
+            width: 260px;
+        }
+        .pos-search-clear {
+            position: absolute;
+            right: 8px;
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 11px;
+            padding: 2px;
+        }
+        .pos-search-clear:hover { color: #fff; }
+        .pos-filter-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: #060912;
+            padding: 2px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+        }
+        .pos-filter-btn {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 4px;
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .pos-filter-btn:hover {
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.04);
+        }
+        .pos-filter-btn.active {
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--accent);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+        .pos-chip-count {
+            font-size: 9px;
+            padding: 0 4px;
+            border-radius: 6px;
+            background: #182236;
+            color: var(--text-muted);
+        }
+        .pos-filter-btn.active .pos-chip-count {
+            background: rgba(56, 189, 248, 0.3);
+            color: #fff;
+        }
+        .pos-toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Stale banner */
+        .pos-stale-banner {
+            background: rgba(245, 158, 11, 0.12);
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            border-radius: 6px;
+            padding: 8px 14px;
+            color: #fcd34d;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 3. Table Wrapper & Table */
+        .pos-table-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .pos-table-scroll {
+            overflow-x: auto;
+            width: 100%;
+        }
+        .pos-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        .pos-table th {
+            background: #090e1b;
+            color: var(--text-dim);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            user-select: none;
+        }
+        .sortable-th {
+            cursor: pointer;
+            transition: color 0.15s;
+        }
+        .sortable-th:hover {
+            color: var(--accent);
+        }
+        .sort-icon {
+            font-size: 9px;
+            margin-left: 3px;
+            color: var(--text-dim);
+        }
+        .sort-active {
+            color: var(--accent) !important;
+        }
+        .pos-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #141c2c;
+            color: var(--text-main);
+            vertical-align: middle;
+        }
+        .pos-row {
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .pos-row:hover {
+            background: rgba(56, 189, 248, 0.03);
+        }
+        .pos-row.expanded {
+            background: rgba(56, 189, 248, 0.05);
+            border-bottom-color: transparent;
+        }
+
+        /* 4. Deep Diagnostics Detail Drawer */
+        .pos-detail-row {
+            background: #080d18;
+        }
+        .pos-detail-panel {
+            padding: 16px 20px;
+            border-top: 1px solid #1c273c;
+            border-bottom: 2px solid var(--accent);
+            background: linear-gradient(180deg, #090e1b 0%, #060912 100%);
+        }
+        .pos-detail-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #182236;
+        }
+        .pos-detail-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .pos-detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 12px;
+        }
+        .pos-detail-card {
+            background: #0b1120;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .pos-detail-card-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #162034;
+        }
+        .pos-kv-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .pos-kv-row b {
+            color: var(--text-main);
+        }
+
+        /* 5. Empty State Card */
+        .pos-empty-state {
+            padding: 48px 24px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+        .pos-empty-icon {
+            font-size: 38px;
+            line-height: 1;
+            filter: drop-shadow(0 0 12px var(--accent-glow));
+        }
+        .pos-empty-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .pos-empty-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            max-width: 520px;
+            line-height: 1.5;
+        }
+        .pos-empty-metrics {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: 8px;
+        }
+        .pos-empty-pill {
+            background: #0e1526;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 11px;
+            color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
         /* Status Colors */
         .text-pos { color: var(--positive); }
         .text-neg { color: var(--negative); }
@@ -953,40 +1301,114 @@
 
         <!-- TAB 2: POSITIONS -->
         <div id="pane-positions" class="tab-pane">
-            <div class="table-container">
-                <div class="table-header-bar">
-                    <div class="table-title">
-                        <span>💼</span> Live Open Positions
+            <div class="pos-container">
+
+                <!-- 1. AutoSL Style Executive Summary Ribbon -->
+                <div class="pos-summary-grid">
+                    <div class="pos-summary-card">
+                        <div class="pos-card-label">Open Positions</div>
+                        <div class="pos-card-val"><span id="pos-stat-count">0</span> <span class="pos-card-sub" id="pos-stat-max">/ 2 Active</span></div>
+                        <div class="pos-card-desc"><span id="pos-stat-exposure" class="mono text-accent">0.0%</span> Gross Exposure</div>
                     </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-danger" onclick="deriskAllPositions()">De-Risk All to Cash</button>
+                    <div class="pos-summary-card">
+                        <div class="pos-card-label">Total Position Notional</div>
+                        <div class="pos-card-val mono" id="pos-stat-notional">$0.00</div>
+                        <div class="pos-card-desc">Cost Basis: <span class="mono" id="pos-stat-cost">$0.00</span></div>
+                    </div>
+                    <div class="pos-summary-card">
+                        <div class="pos-card-label">Unrealized P&L (Net MTM)</div>
+                        <div class="pos-card-val mono" id="pos-stat-pnl">$0.00</div>
+                        <div class="pos-card-desc" id="pos-stat-pnl-pct">+0.00% Return</div>
+                    </div>
+                    <div class="pos-summary-card">
+                        <div class="pos-card-label">Win / Loss Breakdown</div>
+                        <div class="pos-card-val" id="pos-stat-winloss"><span class="text-pos">0 Win</span> <span class="text-dim">/</span> <span class="text-neg">0 Loss</span></div>
+                        <div class="pos-card-desc" id="pos-stat-winrate">No active trades</div>
+                    </div>
+                    <div class="pos-summary-card">
+                        <div class="pos-card-label">AutoSL Dynamic Protection</div>
+                        <div class="pos-card-val" id="pos-stat-protected">0 Protected</div>
+                        <div class="pos-card-desc" id="pos-stat-locked">🔒 $0.00 Locked</div>
                     </div>
                 </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Symbol</th>
-                            <th>Side</th>
-                            <th>Quantity</th>
-                            <th>Entry Price</th>
-                            <th>Mark Price</th>
-                            <th>Notional Value</th>
-                            <th>Unrealized PnL</th>
-                            <th>Trailing Stop Ratchet</th>
-                            <th>TP1 Target (50%)</th>
-                            <th>TP2 Target (100%)</th>
-                            <th>Strategy</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="positions-tbody">
-                        <tr>
-                            <td colspan="12" style="text-align:center; color:var(--text-dim); padding: 30px;">
-                                No open positions active. Bot is scanning in capital-preservation mode.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+
+                <!-- 2. Interactive Operational Toolbar -->
+                <div class="pos-toolbar">
+                    <div class="pos-toolbar-left">
+                        <div class="pos-search-wrapper">
+                            <span class="pos-search-icon">🔍</span>
+                            <input type="text" id="pos-search-input" class="pos-search-input" placeholder="Search symbol, side, strategy..." oninput="onPositionSearchOrFilterChange()">
+                            <button id="pos-search-clear" class="pos-search-clear" onclick="clearPositionSearch()" style="display:none;" title="Clear search">✕</button>
+                        </div>
+                        <div class="pos-filter-group">
+                            <button class="pos-filter-btn active" data-filter="all" onclick="setPositionFilter('all')">All <span class="pos-chip-count" id="chip-cnt-all">0</span></button>
+                            <button class="pos-filter-btn" data-filter="long" onclick="setPositionFilter('long')">Long <span class="pos-chip-count" id="chip-cnt-long">0</span></button>
+                            <button class="pos-filter-btn" data-filter="short" onclick="setPositionFilter('short')">Short <span class="pos-chip-count" id="chip-cnt-short">0</span></button>
+                            <button class="pos-filter-btn" data-filter="profit" onclick="setPositionFilter('profit')">Profitable <span class="pos-chip-count" id="chip-cnt-profit">0</span></button>
+                            <button class="pos-filter-btn" data-filter="loss" onclick="setPositionFilter('loss')">Losing <span class="pos-chip-count" id="chip-cnt-loss">0</span></button>
+                            <button class="pos-filter-btn" data-filter="protected" onclick="setPositionFilter('protected')">Protected <span class="pos-chip-count" id="chip-cnt-protected">0</span></button>
+                        </div>
+                    </div>
+                    <div class="pos-toolbar-right">
+                        <span class="pill pill-live mono" id="pos-stream-status">
+                            <span class="dot-pulse" style="width:6px;height:6px;"></span> LIVE (1s WS)
+                        </span>
+                        <button class="btn" style="padding:5px 10px; font-size:11px;" onclick="refreshPositionsData()" title="Re-fetch authoritative positions from backend">
+                            🔄 Refresh
+                        </button>
+                        <button class="btn btn-danger" style="padding:5px 12px; font-size:11px;" onclick="deriskAllPositions()" title="De-risk all open positions to cash immediately">
+                            🚨 De-Risk All to Cash
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stale Data Warning Banner (Heartbeat Guard) -->
+                <div id="pos-stale-banner" class="pos-stale-banner" style="display:none;">
+                    <span>⚠️ <b>TELEMETRY HEARTBEAT DELAYED:</b> Last update was <span id="pos-stale-seconds">0</span>s ago. Displayed mark prices may not reflect live exchange state. Waiting for fresh telemetry frame...</span>
+                </div>
+
+                <!-- 3. Positions Data Grid Card -->
+                <div class="pos-table-card">
+                    <div class="pos-table-scroll">
+                        <table class="pos-table" id="pos-table-element">
+                            <thead>
+                                <tr>
+                                    <th style="width:36px; text-align:center;">#</th>
+                                    <th onclick="togglePositionSort('symbol')" class="sortable-th" id="th-symbol">Symbol / Asset <span class="sort-icon">⇅</span></th>
+                                    <th onclick="togglePositionSort('side')" class="sortable-th" id="th-side">Side <span class="sort-icon">⇅</span></th>
+                                    <th onclick="togglePositionSort('quantity')" class="sortable-th" id="th-quantity">Quantity <span class="sort-icon">⇅</span></th>
+                                    <th onclick="togglePositionSort('entry_price')" class="sortable-th" id="th-entry_price">Entry Price <span class="sort-icon">⇅</span></th>
+                                    <th onclick="togglePositionSort('current_price')" class="sortable-th" id="th-current_price">Mark Price <span class="sort-icon">⇅</span></th>
+                                    <th onclick="togglePositionSort('notional_value')" class="sortable-th" id="th-notional_value">Position Value <span class="sort-icon">⇅</span></th>
+                                    <th onclick="togglePositionSort('unrealized_pnl')" class="sortable-th" id="th-unrealized_pnl">Unrealized P&L <span class="sort-icon">⇅</span></th>
+                                    <th onclick="togglePositionSort('stop_loss')" class="sortable-th" id="th-stop_loss">AutoSL Protection <span class="sort-icon">⇅</span></th>
+                                    <th>Take Profit (TP1/TP2)</th>
+                                    <th>Strategy & Phase</th>
+                                    <th onclick="togglePositionSort('opened_timestamp')" class="sortable-th" id="th-opened_timestamp">Duration <span class="sort-icon">⇅</span></th>
+                                    <th>Status</th>
+                                    <th style="text-align:right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="positions-tbody">
+                                <!-- Populated dynamically by renderPositionsTable -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Professional Empty State View -->
+                    <div id="pos-empty-state" class="pos-empty-state" style="display:none;">
+                        <div class="pos-empty-icon">💼</div>
+                        <div class="pos-empty-title">No Open Positions</div>
+                        <div class="pos-empty-desc">The bot currently has no active BTC/ETH positions. Quantitative engines are actively scanning order book microstructure, value areas, and liquidity sweeps in capital-preservation mode.</div>
+                        <div class="pos-empty-metrics">
+                            <div class="pos-empty-pill">Available Cash: <b class="text-accent mono" id="empty-avail-cash">$100,000.00</b></div>
+                            <div class="pos-empty-pill">Gross Exposure: <b class="text-pos mono" id="empty-exposure">0.00%</b></div>
+                            <div class="pos-empty-pill">Mandatory Reserve: <b class="text-accent mono" id="empty-min-reserve">5.0% Protected</b></div>
+                            <div class="pos-empty-pill">Governor Mode: <b class="text-pos mono" id="empty-gov-mode">NORMAL</b></div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -1274,8 +1696,17 @@
             const targetPane = document.getElementById(`pane-${tabId}`);
             if (targetPane) targetPane.classList.add('active');
 
-            // Set active on matching button
-            event.currentTarget.classList.add('active');
+            // Set active on matching button safely
+            if (window.event && window.event.currentTarget && window.event.currentTarget.classList) {
+                window.event.currentTarget.classList.add('active');
+            } else {
+                document.querySelectorAll('.tab-btn').forEach(b => {
+                    const oc = b.getAttribute('onclick') || '';
+                    if (oc.includes(`switchTab('${tabId}')`)) {
+                        b.classList.add('active');
+                    }
+                });
+            }
         }
 
         function openKillModal() { document.getElementById('modal-kill').classList.add('open'); }
@@ -2087,60 +2518,566 @@
             tbody.innerHTML = html;
         }
 
-        // Render Positions Table (Tab 2)
+        // =========================================================================
+        // POSITIONS TAB STATE & CONTROLS (AUTOSL ARCHITECTURE)                     //
+        // =========================================================================
+        let _rawPositions = [];
+        let _posFilter = 'all';
+        let _posSearchQuery = '';
+        let _posSortCol = 'unrealized_pnl';
+        let _posSortDir = 'desc';
+        let _expandedPositions = new Set();
+        let _lastPositionsPrices = {};
+
+        function setPositionFilter(filter) {
+            _posFilter = filter;
+            document.querySelectorAll('.pos-filter-btn').forEach(btn => {
+                if (btn.getAttribute('data-filter') === filter) btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
+            renderPositionsView();
+        }
+
+        function onPositionSearchOrFilterChange() {
+            const input = document.getElementById('pos-search-input');
+            _posSearchQuery = (input ? input.value : '').trim().toLowerCase();
+            const clearBtn = document.getElementById('pos-search-clear');
+            if (clearBtn) clearBtn.style.display = _posSearchQuery ? 'block' : 'none';
+            renderPositionsView();
+        }
+
+        function clearPositionSearch() {
+            const input = document.getElementById('pos-search-input');
+            if (input) input.value = '';
+            _posSearchQuery = '';
+            const clearBtn = document.getElementById('pos-search-clear');
+            if (clearBtn) clearBtn.style.display = 'none';
+            renderPositionsView();
+        }
+
+        function clearPositionFilters() {
+            _posFilter = 'all';
+            clearPositionSearch();
+            document.querySelectorAll('.pos-filter-btn').forEach(btn => {
+                if (btn.getAttribute('data-filter') === 'all') btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
+            renderPositionsView();
+        }
+
+        function togglePositionSort(col) {
+            if (_posSortCol === col) {
+                _posSortDir = _posSortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                _posSortCol = col;
+                _posSortDir = 'desc';
+            }
+            updateSortHeaders();
+            renderPositionsView();
+        }
+
+        function updateSortHeaders() {
+            const cols = ['symbol', 'side', 'quantity', 'entry_price', 'current_price', 'notional_value', 'unrealized_pnl', 'stop_loss', 'opened_timestamp'];
+            cols.forEach(c => {
+                const th = document.getElementById(`th-${c}`);
+                if (!th) return;
+                const icon = th.querySelector('.sort-icon');
+                if (c === _posSortCol) {
+                    th.classList.add('sort-active');
+                    if (icon) icon.innerText = _posSortDir === 'asc' ? '▲' : '▼';
+                } else {
+                    th.classList.remove('sort-active');
+                    if (icon) icon.innerText = '⇅';
+                }
+            });
+        }
+
+        function togglePositionExpand(sym) {
+            if (_expandedPositions.has(sym)) {
+                _expandedPositions.delete(sym);
+            } else {
+                _expandedPositions.add(sym);
+            }
+            renderPositionsView();
+        }
+
+        async function refreshPositionsData() {
+            try {
+                showToast('Refreshing positions telemetry from backend...');
+                const res = await fetch('/api/positions');
+                if (res.ok) {
+                    const data = await res.json();
+                    renderPositionsTable(data);
+                    showToast(`Updated: ${data.length} position(s) synchronized.`);
+                }
+            } catch (err) {
+                console.error('refreshPositionsData error:', err);
+                showToast('Failed to fetch positions: ' + err.message);
+            }
+        }
+
+        function formatDuration(openedTs) {
+            if (!openedTs || isNaN(openedTs) || openedTs <= 0) return '—';
+            const elapsedSec = Math.max(0, Math.floor((Date.now() - openedTs) / 1000));
+            if (elapsedSec < 60) return `${elapsedSec}s`;
+            const mins = Math.floor(elapsedSec / 60);
+            const secs = elapsedSec % 60;
+            if (mins < 60) return `${mins}m ${secs}s`;
+            const hours = Math.floor(mins / 60);
+            const remMins = mins % 60;
+            return `${hours}h ${remMins}m`;
+        }
+
+        // Render Positions Table & AutoSL Summary (Tab 2)
         function renderPositionsTable(positions) {
+            _rawPositions = Array.isArray(positions) ? positions : [];
+            renderPositionsView();
+        }
+
+        function renderPositionsView() {
+            const positions = _rawPositions;
+
+            // 1. Calculate & Render Executive Summary Ribbon
+            const count = positions.length;
+            let longCount = 0;
+            let shortCount = 0;
+            let winCount = 0;
+            let lossCount = 0;
+            let protectedCount = 0;
+            let totalNotional = 0;
+            let totalCost = 0;
+            let totalUnrealized = 0;
+            let totalLockedProfit = 0;
+
+            positions.forEach(p => {
+                const side = (p.side || 'BUY').toUpperCase();
+                const isShort = side === 'SELL' || side === 'SHORT';
+                if (isShort) shortCount++; else longCount++;
+
+                const pnl = Number(p.unrealized_pnl) || 0;
+                if (pnl > 0) winCount++;
+                else if (pnl < 0) lossCount++;
+
+                const locked = Number(p.locked_profit) || 0;
+                const isProtected = locked > 0 || (p.phase && p.phase.includes('VALIDATED')) || p.validation_survived || p.trailing_sl_active;
+                if (isProtected) protectedCount++;
+
+                const notional = Number(p.notional_value) || (Number(p.quantity || 0) * Number(p.current_price || 0));
+                const cost = (Number(p.entry_price || 0) * Number(p.quantity || 0));
+
+                totalNotional += notional;
+                totalCost += cost;
+                totalUnrealized += pnl;
+                totalLockedProfit += locked;
+            });
+
+            // Update badge in top navigation tab
+            const tabBadge = document.getElementById('tab-badge-positions');
+            if (tabBadge) tabBadge.innerText = count;
+
+            // Update filter chip count badges
+            const chipAll = document.getElementById('chip-cnt-all'); if (chipAll) chipAll.innerText = count;
+            const chipLong = document.getElementById('chip-cnt-long'); if (chipLong) chipLong.innerText = longCount;
+            const chipShort = document.getElementById('chip-cnt-short'); if (chipShort) chipShort.innerText = shortCount;
+            const chipProfit = document.getElementById('chip-cnt-profit'); if (chipProfit) chipProfit.innerText = winCount;
+            const chipLoss = document.getElementById('chip-cnt-loss'); if (chipLoss) chipLoss.innerText = lossCount;
+            const chipProtected = document.getElementById('chip-cnt-protected'); if (chipProtected) chipProtected.innerText = protectedCount;
+
+            // Update Ribbon Cards
+            const statCount = document.getElementById('pos-stat-count'); if (statCount) statCount.innerText = count;
+            const statMax = document.getElementById('pos-stat-max');
+            const maxPositions = (window.currentPayload && window.currentPayload.portfolio && window.currentPayload.portfolio.max_positions) || 2;
+            if (statMax) statMax.innerText = `/ ${maxPositions} Active`;
+
+            const grossExp = (window.currentPayload && window.currentPayload.portfolio && window.currentPayload.portfolio.gross_exposure_pct) || 0;
+            const statExposure = document.getElementById('pos-stat-exposure');
+            if (statExposure) statExposure.innerText = `${grossExp.toFixed(1)}%`;
+
+            const statNotional = document.getElementById('pos-stat-notional');
+            if (statNotional) statNotional.innerText = '$' + totalNotional.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const statCost = document.getElementById('pos-stat-cost');
+            if (statCost) statCost.innerText = '$' + totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            const statPnl = document.getElementById('pos-stat-pnl');
+            if (statPnl) {
+                statPnl.innerText = (totalUnrealized >= 0 ? '+' : '') + '$' + totalUnrealized.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                statPnl.className = 'pos-card-val mono ' + (totalUnrealized >= 0 ? 'text-pos' : 'text-neg');
+            }
+            const statPnlPct = document.getElementById('pos-stat-pnl-pct');
+            if (statPnlPct) {
+                const retPct = totalCost > 0 ? (totalUnrealized / totalCost * 100.0) : 0.0;
+                statPnlPct.innerText = `${retPct >= 0 ? '+' : ''}${retPct.toFixed(2)}% Return on Capital`;
+                statPnlPct.className = 'pos-card-desc ' + (retPct >= 0 ? 'text-pos' : 'text-neg');
+            }
+
+            const statWinLoss = document.getElementById('pos-stat-winloss');
+            if (statWinLoss) statWinLoss.innerHTML = `<span class="text-pos">${winCount} Win</span> <span class="text-dim">/</span> <span class="text-neg">${lossCount} Loss</span>`;
+            const statWinRate = document.getElementById('pos-stat-winrate');
+            if (statWinRate) {
+                if (count > 0) {
+                    const wr = ((winCount / count) * 100).toFixed(0);
+                    statWinRate.innerText = `${wr}% Winning Positions`;
+                } else {
+                    statWinRate.innerText = 'No active trades';
+                }
+            }
+
+            const statProtected = document.getElementById('pos-stat-protected');
+            if (statProtected) {
+                statProtected.innerText = `${protectedCount} Protected (${count > 0 ? ((protectedCount / count) * 100).toFixed(0) : 0}%)`;
+                statProtected.className = 'pos-card-val ' + (protectedCount > 0 ? 'text-accent' : '');
+            }
+            const statLocked = document.getElementById('pos-stat-locked');
+            if (statLocked) {
+                statLocked.innerText = `🔒 $${totalLockedProfit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Profit Locked`;
+                statLocked.className = 'pos-card-desc ' + (totalLockedProfit > 0 ? 'text-pos' : 'text-muted');
+            }
+
+            // Freshness / Stale check
+            const elapsedHeartbeat = (Date.now() - (window.lastFrameTime || Date.now())) / 1000;
+            const streamPill = document.getElementById('pos-stream-status');
+            const staleBanner = document.getElementById('pos-stale-banner');
+            const staleSecs = document.getElementById('pos-stale-seconds');
+
+            if (elapsedHeartbeat > 5.0) {
+                if (streamPill) {
+                    streamPill.className = 'pill pill-dry mono';
+                    streamPill.innerHTML = `<span class="dot-pulse" style="width:6px;height:6px;background:#f59e0b;box-shadow:0 0 6px #f59e0b;"></span> STALE (${elapsedHeartbeat.toFixed(0)}s)`;
+                }
+                if (staleBanner) {
+                    staleBanner.style.display = 'flex';
+                    if (staleSecs) staleSecs.innerText = elapsedHeartbeat.toFixed(1);
+                }
+            } else {
+                if (streamPill) {
+                    streamPill.className = 'pill pill-live mono';
+                    streamPill.innerHTML = `<span class="dot-pulse" style="width:6px;height:6px;"></span> LIVE (1s WS)`;
+                }
+                if (staleBanner) staleBanner.style.display = 'none';
+            }
+
+            // Empty state check
+            const tableEl = document.getElementById('pos-table-element');
+            const emptyEl = document.getElementById('pos-empty-state');
             const tbody = document.getElementById('positions-tbody');
-            if (!positions || positions.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="12" style="text-align:center; color:var(--text-dim); padding: 30px;">
-                            No open positions active. Bot is scanning in capital-preservation mode.
-                        </td>
-                    </tr>`;
+
+            if (count === 0) {
+                if (tableEl) tableEl.style.display = 'none';
+                if (emptyEl) {
+                    emptyEl.style.display = 'flex';
+                    // Populate empty state live portfolio telemetry
+                    const pData = (window.currentPayload && window.currentPayload.portfolio) || {};
+                    const availEl = document.getElementById('empty-avail-cash');
+                    if (availEl) availEl.innerText = '$' + (pData.available_cash || pData.cash || 100000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    const minResEl = document.getElementById('empty-min-reserve');
+                    if (minResEl) minResEl.innerText = `${(pData.cash_reserve_pct || 5.0).toFixed(1)}% Protected`;
+                    const govEl = document.getElementById('empty-gov-mode');
+                    if (govEl) govEl.innerText = pData.risk_state || 'NORMAL';
+                }
+                if (tbody) tbody.innerHTML = '';
                 return;
             }
 
+            if (tableEl) tableEl.style.display = 'table';
+            if (emptyEl) emptyEl.style.display = 'none';
+
+            // 2. Filter Positions
+            let filtered = positions.filter(p => {
+                const side = (p.side || 'BUY').toUpperCase();
+                const isShort = side === 'SELL' || side === 'SHORT';
+                const pnl = Number(p.unrealized_pnl) || 0;
+                const locked = Number(p.locked_profit) || 0;
+                const isProtected = locked > 0 || (p.phase && p.phase.includes('VALIDATED')) || p.validation_survived || p.trailing_sl_active;
+
+                if (_posFilter === 'long' && isShort) return false;
+                if (_posFilter === 'short' && !isShort) return false;
+                if (_posFilter === 'profit' && pnl <= 0) return false;
+                if (_posFilter === 'loss' && pnl >= 0) return false;
+                if (_posFilter === 'protected' && !isProtected) return false;
+
+                if (_posSearchQuery) {
+                    const haystack = `${p.symbol} ${p.base_coin || ''} ${p.side || ''} ${p.strategy || ''} ${p.phase || ''} ${p.status || ''}`.toLowerCase();
+                    if (!haystack.includes(_posSearchQuery)) return false;
+                }
+                return true;
+            });
+
+            // 3. Sort Positions
+            filtered.sort((a, b) => {
+                let vA, vB;
+                switch (_posSortCol) {
+                    case 'symbol':
+                        vA = (a.symbol || '').toLowerCase();
+                        vB = (b.symbol || '').toLowerCase();
+                        return _posSortDir === 'asc' ? vA.localeCompare(vB) : vB.localeCompare(vA);
+                    case 'side':
+                        vA = (a.side || 'BUY').toUpperCase();
+                        vB = (b.side || 'BUY').toUpperCase();
+                        return _posSortDir === 'asc' ? vA.localeCompare(vB) : vB.localeCompare(vA);
+                    case 'quantity':
+                        vA = Number(a.quantity) || 0;
+                        vB = Number(b.quantity) || 0;
+                        break;
+                    case 'entry_price':
+                        vA = Number(a.entry_price) || 0;
+                        vB = Number(b.entry_price) || 0;
+                        break;
+                    case 'current_price':
+                        vA = Number(a.current_price) || 0;
+                        vB = Number(b.current_price) || 0;
+                        break;
+                    case 'notional_value':
+                        vA = Number(a.notional_value) || (Number(a.quantity||0) * Number(a.current_price||0));
+                        vB = Number(b.notional_value) || (Number(b.quantity||0) * Number(b.current_price||0));
+                        break;
+                    case 'stop_loss':
+                        vA = Number(a.stop_loss) || 0;
+                        vB = Number(b.stop_loss) || 0;
+                        break;
+                    case 'opened_timestamp':
+                        vA = Number(a.opened_timestamp) || 0;
+                        vB = Number(b.opened_timestamp) || 0;
+                        break;
+                    case 'unrealized_pnl':
+                    default:
+                        vA = Number(a.unrealized_pnl) || 0;
+                        vB = Number(b.unrealized_pnl) || 0;
+                        break;
+                }
+                return _posSortDir === 'asc' ? vA - vB : vB - vA;
+            });
+
+            if (filtered.length === 0) {
+                if (tbody) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="14" style="text-align:center; color:var(--text-dim); padding: 35px;">
+                                No positions match the selected filter <b>"${_posFilter.toUpperCase()}"</b>${_posSearchQuery ? ` and query "${_posSearchQuery}"` : ''}.
+                                <br><br>
+                                <button class="btn btn-accent" style="font-size:11px;" onclick="clearPositionFilters()">Reset Filters</button>
+                            </td>
+                        </tr>`;
+                }
+                return;
+            }
+
+            // 4. Render Rows
             let html = '';
-            positions.forEach(p => {
-                const pnl = p.unrealized_pnl || 0;
-                const pnlPct = p.unrealized_pnl_pct || 0;
-                const pnlClass = pnl >= 0 ? 'text-pos' : 'text-neg';
+            filtered.forEach((p, idx) => {
+                const symId = (p.symbol || 'SYM').replace(/[^a-zA-Z0-9]/g, '_');
+                const isExpanded = _expandedPositions.has(p.symbol);
 
-                const sideStr = p.side || 'BUY';
-                const sidePill = sideStr === 'SELL' ? 'pill-red' : 'pill-live';
-                const phaseStr = p.phase || 'PHASE_1_VALIDATION';
-                let phaseBadgeClass = 'pill-purple';
-                if (phaseStr.includes('VALIDATED') || phaseStr.includes('PHASE_2')) phaseBadgeClass = 'pill-live';
-                else if (phaseStr.includes('MOMENTUM') || phaseStr.includes('TRAILING')) phaseBadgeClass = 'pill-blue';
+                const side = (p.side || 'BUY').toUpperCase();
+                const isShort = side === 'SELL' || side === 'SHORT';
+                const sideLabel = isShort ? 'SHORT' : 'LONG';
+                const sidePill = isShort ? 'pill-red' : 'pill-live';
+                const sideColor = isShort ? 'text-neg' : 'text-pos';
 
+                const curPx = Number(p.current_price) || 0;
+                const entryPx = Number(p.entry_price) || 0;
+                const qty = Number(p.quantity) || 0;
+                const notional = Number(p.notional_value) || (qty * curPx);
+                const costBasis = entryPx * qty;
+                const pnl = Number(p.unrealized_pnl) || 0;
+                const pnlPct = costBasis > 0 ? (pnl / costBasis * 100.0) : (Number(p.unrealized_pnl_pct) || 0);
+
+                const pnlClass = pnl >= 0 ? 'text-pos font-bold' : 'text-neg font-bold';
+                const pnlSign = pnl >= 0 ? '+' : '';
+                const pnlPctSign = pnlPct >= 0 ? '+' : '';
+
+                // Price update tick flash
+                let flashClass = '';
+                const lastPx = _lastPositionsPrices[p.symbol];
+                if (lastPx !== undefined && curPx > 0) {
+                    if (curPx > lastPx) flashClass = 'flash-up';
+                    else if (curPx < lastPx) flashClass = 'flash-down';
+                }
+                _lastPositionsPrices[p.symbol] = curPx;
+
+                // AutoSL Lifecycle Phase & Trailing Stop styling
+                const phase = p.phase || 'PHASE_1_VALIDATION';
+                let phasePill = 'pill-purple';
+                let phaseLabel = 'Phase 1 Validating';
+                if (phase.includes('VALIDATED') || phase.includes('PHASE_2')) {
+                    phasePill = 'pill-live';
+                    phaseLabel = 'Phase 2 Validated';
+                } else if (phase.includes('MOMENTUM')) {
+                    phasePill = 'pill-blue';
+                    phaseLabel = `Momentum Ext Lvl ${p.extension_level || 1}`;
+                } else if (phase.includes('FINAL_TRAILING')) {
+                    phasePill = 'pill-blue';
+                    phaseLabel = 'Final Trailing';
+                }
+
+                // Status badge
+                let statusBadge = 'pill-live';
+                const statStr = (p.status || 'OPEN').toUpperCase();
+                if (statStr === 'EXITING' || statStr === 'EXIT_PENDING') statusBadge = 'pill-red';
+                else if (statStr === 'TP1_PENDING') statusBadge = 'pill-dry';
+                else if (statStr === 'CLOSED') statusBadge = 'pill-blue';
+
+                const durationStr = formatDuration(p.opened_timestamp);
+                const lockedProfit = Number(p.locked_profit) || 0;
+                const entryTimeStr = p.opened_timestamp ? new Date(p.opened_timestamp).toISOString().replace('T', ' ').substring(0, 19) + ' UTC' : '—';
+
+                // Distance from peak calculation
+                const highestPx = Number(p.highest_price) || curPx;
+                let pullbackStr = '0.00%';
+                if (highestPx > 0 && curPx > 0) {
+                    const pb = Math.abs(highestPx - curPx) / highestPx * 100.0;
+                    pullbackStr = `-${pb.toFixed(2)}% ($${(highestPx - curPx).toFixed(2)})`;
+                }
+
+                // Row HTML
                 html += `
-                <tr>
-                    <td class="mono font-bold">${p.symbol}</td>
-                    <td><span class="pill ${sidePill} mono">${sideStr} (${sideStr === 'SELL' ? 'SHORT' : 'LONG'})</span></td>
-                    <td class="mono">${p.quantity.toFixed(4)} ${p.base_coin}</td>
-                    <td class="mono">$${p.entry_price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                    <td class="mono font-bold">$${p.current_price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                    <td class="mono">$${(p.notional_value || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                <tr class="pos-row ${isExpanded ? 'expanded' : ''}" onclick="togglePositionExpand('${p.symbol}')" title="Click to inspect deep diagnostics">
+                    <td style="text-align:center; color:var(--text-dim);" class="mono">
+                        <span style="display:inline-block; transition:transform 0.2s; transform:${isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
+                    </td>
+                    <td>
+                        <div style="font-weight:700; color:#fff;" class="mono">${p.symbol}</div>
+                        <div style="font-size:10px; color:var(--text-dim);">${p.base_coin || p.symbol.split('/')[0]} Asset</div>
+                    </td>
+                    <td>
+                        <span class="pill ${sidePill} mono" style="font-size:11px;">${sideLabel}</span>
+                    </td>
+                    <td class="mono">
+                        <div><b>${qty.toFixed(4)}</b> <span style="font-size:10px; color:var(--text-dim);">${p.base_coin || ''}</span></div>
+                    </td>
+                    <td class="mono">
+                        $${entryPx.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td class="mono">
+                        <span class="${flashClass}" style="font-weight:700; color:#fff;">
+                            $${curPx.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    </td>
+                    <td class="mono">
+                        $${notional.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
                     <td class="mono ${pnlClass}">
-                        <b>${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</b> (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)
+                        <div>${pnlSign}$${pnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <div style="font-size:10px;">${pnlPctSign}${pnlPct.toFixed(2)}%</div>
                     </td>
                     <td>
-                        <span class="pill ${phaseBadgeClass} mono" style="font-size:10px;">${p.trailing_status || 'Initial Stop'}</span>
-                        <div style="font-size:10px; color:var(--text-dim);" class="mono">SL: $${(p.stop_loss || 0).toFixed(2)} | Dynamic: ${(p.sl_percent || 2.0).toFixed(1)}%</div>
-                        ${(p.locked_profit || 0) > 0 ? `<div style="font-size:10px; color:var(--positive);" class="mono">🔒 Locked: +$${p.locked_profit.toFixed(2)}</div>` : ''}
+                        <div class="mono" style="font-size:11px; color:#fff;">
+                            SL: <b class="text-neg">$${(Number(p.stop_loss) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
+                        </div>
+                        <div style="font-size:10px; color:var(--text-dim);" class="mono">
+                            Init: $${(Number(p.initial_stop_loss || p.stop_loss) || 0).toFixed(2)} (${(p.sl_percent || 2.0).toFixed(1)}%)
+                        </div>
+                        ${lockedProfit > 0 ? `<div style="font-size:10px; color:var(--positive);" class="mono">🔒 +$${lockedProfit.toFixed(2)} Locked</div>` : ''}
                     </td>
-                    <td class="mono text-pos">$${(p.take_profit_1 || 0).toFixed(2)}</td>
-                    <td class="mono text-pos">$${(p.take_profit_2 || 0).toFixed(2)}</td>
-                    <td><span class="pill pill-blue mono" style="font-size:10px;">${p.strategy || 'STRATEGY'}</span></td>
                     <td>
-                        <button class="btn btn-danger" style="padding:4px 8px; font-size:10px;" onclick="deriskPosition('${p.symbol}')">
-                            De-Risk
-                        </button>
+                        <div class="mono text-pos" style="font-size:11px;">
+                            TP1: $${(Number(p.take_profit_1) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} ${p.take_profit_1_hit ? '🎯' : ''}
+                        </div>
+                        <div class="mono text-pos" style="font-size:10px; opacity:0.85;">
+                            TP2: $${(Number(p.take_profit_2) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} ${p.take_profit_2_hit ? '🎯' : ''}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="pill pill-blue mono" style="font-size:10px;">${p.strategy || 'ENGINE'}</span>
+                        <div style="margin-top:2px;">
+                            <span class="pill ${phasePill} mono" style="font-size:9px;">${phaseLabel}</span>
+                        </div>
+                    </td>
+                    <td class="mono" style="font-size:11px; color:var(--text-muted);">
+                        <div>⏱️ ${durationStr}</div>
+                        <div style="font-size:9px; color:var(--text-dim);">${entryTimeStr.substring(11, 19)}</div>
+                    </td>
+                    <td>
+                        <span class="pill ${statusBadge} mono" style="font-size:10px;">${statStr}</span>
+                    </td>
+                    <td style="text-align:right;" onclick="event.stopPropagation()">
+                        <div style="display:flex; align-items:center; justify-content:flex-end; gap:6px;">
+                            <button class="btn" style="padding:3px 8px; font-size:10px;" onclick="togglePositionExpand('${p.symbol}')" title="Inspect full diagnostic telemetry">
+                                ${isExpanded ? 'Close' : 'Inspect'}
+                            </button>
+                            <button class="btn btn-danger" style="padding:3px 8px; font-size:10px;" onclick="deriskPosition('${p.symbol}')" title="De-risk this single position to cash">
+                                De-Risk
+                            </button>
+                        </div>
                     </td>
                 </tr>`;
+
+                // If expanded, render Deep Diagnostics Drawer
+                if (isExpanded) {
+                    html += `
+                    <tr id="pos-detail-row-${symId}" class="pos-detail-row">
+                        <td colspan="14" style="padding:0; border-bottom: 2px solid var(--accent);">
+                            <div class="pos-detail-panel">
+                                <div class="pos-detail-header">
+                                    <div class="pos-detail-title">
+                                        <span>🔬</span> AutoSL Deep Diagnostics: <b class="text-accent">${p.symbol}</b>
+                                        <span class="pill ${sidePill} mono" style="font-size:11px;">${sideLabel}</span>
+                                        <span class="pill ${statusBadge} mono" style="font-size:11px;">${statStr}</span>
+                                        <span class="pill ${phasePill} mono" style="font-size:11px;">${phaseLabel}</span>
+                                    </div>
+                                    <div style="font-size:11px; color:var(--text-dim);" class="mono">
+                                        Opened: ${entryTimeStr} • Live Duration: <b class="text-accent">${durationStr}</b>
+                                    </div>
+                                </div>
+                                <div class="pos-detail-grid">
+                                    <!-- Box 1: Position & Exposure -->
+                                    <div class="pos-detail-card">
+                                        <div class="pos-detail-card-title">💼 Position & Exposure Ledger</div>
+                                        <div class="pos-kv-row"><span>Symbol / Asset:</span><b class="mono">${p.symbol} (${p.base_coin || p.symbol.split('/')[0]})</b></div>
+                                        <div class="pos-kv-row"><span>Direction:</span><b class="${sideColor} mono">${sideLabel}</b></div>
+                                        <div class="pos-kv-row"><span>Quantity:</span><b class="mono">${qty.toFixed(4)} ${p.base_coin || ''}</b></div>
+                                        <div class="pos-kv-row"><span>Entry Price:</span><b class="mono">$${entryPx.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
+                                        <div class="pos-kv-row"><span>Current Mark Price:</span><b class="mono text-accent font-bold">$${curPx.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
+                                        <div class="pos-kv-row"><span>Notional Exposure:</span><b class="mono">$${notional.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
+                                        <div class="pos-kv-row"><span>Cost Basis:</span><b class="mono">$${costBasis.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
+                                    </div>
+
+                                    <!-- Box 2: Performance & High-Water Mark -->
+                                    <div class="pos-detail-card">
+                                        <div class="pos-detail-card-title">📈 Performance & High-Water Mark</div>
+                                        <div class="pos-kv-row"><span>Unrealized P&L:</span><b class="mono ${pnlClass}">${pnlSign}$${pnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
+                                        <div class="pos-kv-row"><span>Return on Cost:</span><b class="mono ${pnlClass}">${pnlPctSign}${pnlPct.toFixed(2)}%</b></div>
+                                        <div class="pos-kv-row"><span>Realized P&L:</span><b class="mono ${(Number(p.realized_pnl)||0) >= 0 ? 'text-pos' : 'text-neg'}">${(Number(p.realized_pnl)||0) >= 0 ? '+' : ''}$${(Number(p.realized_pnl)||0).toFixed(2)}</b></div>
+                                        <div class="pos-kv-row"><span>Peak Price Reached:</span><b class="mono text-pos">$${highestPx.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
+                                        <div class="pos-kv-row"><span>Peak Profit Points:</span><b class="mono">${(Number(p.peak_profit_points) || 0).toFixed(2)} pts</b></div>
+                                        <div class="pos-kv-row"><span>Pullback from Peak:</span><b class="mono text-warn">${pullbackStr}</b></div>
+                                    </div>
+
+                                    <!-- Box 3: AutoSL Dynamic Protection Architecture -->
+                                    <div class="pos-detail-card">
+                                        <div class="pos-detail-card-title">🛡️ AutoSL Dynamic Protection</div>
+                                        <div class="pos-kv-row"><span>Lifecycle Phase:</span><b class="text-accent">${phaseLabel}</b></div>
+                                        <div class="pos-kv-row"><span>Initial Stop Loss:</span><b class="mono text-neg">$${(Number(p.initial_stop_loss || p.stop_loss) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</b></div>
+                                        <div class="pos-kv-row"><span>Dynamic Ratchet SL:</span><b class="mono text-neg font-bold">$${(Number(p.stop_loss) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</b></div>
+                                        <div class="pos-kv-row"><span>Dynamic SL Percent:</span><b class="mono">${(Number(p.sl_percent) || 2.0).toFixed(1)}%</b></div>
+                                        <div class="pos-kv-row"><span>Locked Profit:</span><b class="mono text-pos">${lockedProfit > 0 ? `🔒 +$${lockedProfit.toFixed(2)}` : 'None (Trailing)'}</b></div>
+                                        <div class="pos-kv-row"><span>Structural Breakout Ref:</span><b class="mono">$${(Number(p.entry_breakout_level || p.entry_price) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</b></div>
+                                        <div class="pos-kv-row"><span>Validation Status:</span><b>${p.validation_survived ? '✅ Survived (Phase 2)' : `⏳ Validating (${p.candles_since_entry || 0}/2 Candles)`}</b></div>
+                                    </div>
+
+                                    <!-- Box 4: Take Profit & Execution Diagnostics -->
+                                    <div class="pos-detail-card">
+                                        <div class="pos-detail-card-title">🎯 Targets & Microstructure Origin</div>
+                                        <div class="pos-kv-row"><span>TP1 Target (50% scale):</span><b class="mono text-pos">$${(Number(p.take_profit_1) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} ${p.take_profit_1_hit ? '🎯 [HIT]' : ''}</b></div>
+                                        <div class="pos-kv-row"><span>TP2 Target (100% full):</span><b class="mono text-pos">$${(Number(p.take_profit_2) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} ${p.take_profit_2_hit ? '🎯 [HIT]' : ''}</b></div>
+                                        <div class="pos-kv-row"><span>Strategy Origin:</span><b class="mono text-accent">${p.strategy || 'MULTI_ENGINE'}</b></div>
+                                        <div class="pos-kv-row"><span>Momentum Mode:</span><b class="mono">${p.momentum_status || 'NORMAL'}</b></div>
+                                        <div class="pos-kv-row"><span>Volume Drop Detected:</span><b>${p.volume_drop_detected ? '⚠️ Yes (Early Exit Watch)' : 'No (Healthy)'}</b></div>
+                                        <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+                                            <button class="btn btn-danger" style="padding:5px 12px; font-size:11px;" onclick="deriskPosition('${p.symbol}')">
+                                                🚨 De-Risk ${p.symbol} to Cash
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>`;
+                }
             });
-            tbody.innerHTML = html;
+
+            if (tbody) tbody.innerHTML = html;
         }
+
 
         // Render Orders Table (Tab 3)
         function renderOrdersTable(orders) {
