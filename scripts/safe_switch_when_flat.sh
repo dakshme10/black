@@ -28,8 +28,8 @@ while true; do
     # Try querying live web server endpoint
     POS_JSON=$(curl -s --max-time 4 http://localhost:8080/api/positions 2>/dev/null || true)
     if [ -n "$POS_JSON" ]; then
-        OPEN_COUNT=$(python3 -c "import sys, json; data=json.loads(sys.argv[1]); print(data.get('count', 0))" "$POS_JSON" 2>/dev/null || echo "0")
-        POS_SUMMARY=$(python3 -c "import sys, json; data=json.loads(sys.argv[1]); pos=data.get('positions', []); print(', '.join([f\"{p.get('symbol')}:{p.get('quantity')}\" for p in pos]))" "$POS_JSON" 2>/dev/null || echo "")
+        OPEN_COUNT=$(python3 -c "import sys, json; data=json.loads(sys.argv[1]); print(len(data) if isinstance(data, list) else data.get('count', 0))" "$POS_JSON" 2>/dev/null || echo "0")
+        POS_SUMMARY=$(python3 -c "import sys, json; data=json.loads(sys.argv[1]); pos=(data if isinstance(data, list) else data.get('positions', [])); print(', '.join([f\"{p.get('symbol')}:{p.get('quantity')}\" for p in pos]))" "$POS_JSON" 2>/dev/null || echo "")
     else
         # Fallback to local portfolio_state.json if web server not answering
         if [ -f "data/portfolio_state.json" ]; then
