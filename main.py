@@ -867,8 +867,7 @@ class RoostooAutonomousBot:
 
     def handle_reset_risk(self) -> Dict[str, Any]:
         """Reset rolling 24h freeze timer and cleared breaker flags."""
-        self.risk_manager.freeze_until_timestamp = 0.0
-        self.risk_manager.permanent_kill_switch = False
+        self.risk_manager.reset_circuit_breaker()
         self._circuit_breaker_active = False
         self._last_circuit_breaker_type = ""
         self._last_circuit_breaker_alert_time = 0.0

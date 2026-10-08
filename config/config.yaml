@@ -16,9 +16,9 @@ portfolio:
   initial_capital: 50000.0
   min_cash_reserve_pct: 0.05       # 5% cash reserve constraint
   max_gross_exposure_pct: 1.00     # 100% maximum gross exposure (no leverage)
-  max_risk_per_trade_pct: 0.01     # 1.0% maximum risk per trade
-  max_open_positions: 2            # Maximum simultaneous active positions
-  max_position_notional_pct: 0.50  # No single position exceeds 50% equity
+  max_risk_per_trade_pct: 0.0075   # 0.75% maximum risk per trade (scaled for up to 4 positions)
+  max_open_positions: 4            # Maximum simultaneous active positions (expanded from 2)
+  max_position_notional_pct: 0.35  # No single position exceeds 35% equity (down from 50%)
 
 risk_controls:
   rolling_24h_drawdown_limit: 0.035  # 3.5% rolling 24h drawdown circuit breaker
@@ -45,11 +45,14 @@ risk_governor:
     min_risk_reward: 1.5
   position_sizing:
     enabled: true
-    base_risk_per_trade_pct: 0.010   # 1.0% equity risk
-    max_major_position_pct: 0.50     # 50% max for BTC/ETH (aligns with portfolio cap)
-    max_alt_position_pct: 0.25       # 25% max for altcoins
+    base_risk_per_trade_pct: 0.0075  # 0.75% equity risk per trade
+    max_major_position_pct: 0.35     # 35% max for BTC/ETH (reduced from 50%)
+    max_midcap_position_pct: 0.20    # 20% max for mid-cap alts
+    max_meme_position_pct: 0.08      # 8% max for highly volatile meme tokens (PEPE, BONK, PUMP)
+    max_alt_position_pct: 0.20       # 20% fallback max for alts
     quality_scaling_enabled: true
     regime_scaling_enabled: true
+    volatility_scaling_enabled: true
   drawdown_governor:
     enabled: true
     caution_drawdown_pct: 0.015      # 1.5% DD -> CAUTION (0.70x risk)
@@ -73,12 +76,18 @@ risk_governor:
   exposure_limits:
     enabled: true
     max_gross_exposure_pct: 1.00     # 100% total gross exposure
-    max_concurrent_positions: 2
-    max_alt_exposure_pct: 0.50       # 50% max combined altcoin exposure
-    max_alt_concurrent_positions: 1  # Max 1 altcoin at a time
+    max_concurrent_positions: 4      # Up to 4 positions
+    max_alt_concurrent_positions: 3  # Up to 3 alts simultaneously (expanded from 1)
+    max_alt_exposure_pct: 0.60       # 60% max combined altcoin exposure
+    max_meme_concurrent_positions: 1 # At most 1 meme token at a time
+    max_meme_exposure_pct: 0.12      # 12% max combined meme exposure
     majors:
       - "BTC/USD"
       - "ETH/USD"
+    meme_tokens:
+      - "PEPE/USD"
+      - "BONK/USD"
+      - "PUMP/USD"
 
 fees:
   maker_fee_pct: 0.0005   # 0.05% Limit/Maker

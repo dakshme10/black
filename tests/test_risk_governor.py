@@ -577,3 +577,118 @@ def test_strategy_attribution_a_and_b_active_c_inactive():
     assert engine.strategy_va is not None
     assert engine.strategy_ls is not None
     assert engine.config.cvd_absorption.enabled is False
+
+
+# ==============================================================================
+# FEATURE 20: 3-TIER VOLATILITY-ADJUSTED ALLOCATION & CONCURRENT CAPACITY
+# ==============================================================================
+
+def test_three_tier_position_sizing_allocations():
+    """
+    Validates:
+    - Tier 1 (Majors): up to 35% cap with 1.0x multiplier
+    - Tier 2 (Mid-caps): up to 20% cap with 0.70x multiplier
+    - Tier 3 (Meme tokens): up to 8% cap with 0.40x multiplier
+    """
+    gov_cfg = RiskGovernorConfig()
+    gov_cfg.position_sizing.max_major_position_pct = 0.35
+    gov_cfg.position_sizing.max_midcap_position_pct = 0.20
+    gov_cfg.position_sizing.max_meme_position_pct = 0.08
+    gov_cfg.position_sizing.base_risk_per_trade_pct = 0.0075
+    gov = RiskGovernor(gov_cfg)
+
+    equity = 100000.0
+    cash = 100000.0
+    multipliers = {"quality": 1.0, "regime": 1.0, "drawdown": 1.0, "symbol": 1.0, "volatility": 1.0}
+
+    # 1. Major (BTC) - Tight stop with large theoretical size capped at 35% ($35,000)
+    sig_btc = Signal("VA", "BTC/USD", "BUY", 0.85, 50000.0, 49500.0, 52000.0, 53000.0, 2.0, "Test", "RANGE", 1000)
+    ok_btc, _, notional_btc, _, _, _ = gov.position_sizer.compute_size(
+        sig_btc, equity, cash, is_major=True, multipliers=multipliers, is_meme=False
+    )
+    assert ok_btc is True
+    assert notional_btc <= 35000.01
+
+    # 2. Mid-cap (SOL) - Capped at 20% ($20,000)
+    sig_sol = Signal("VA", "SOL/USD", "BUY", 0.85, 100.0, 99.0, 104.0, 106.0, 2.0, "Test", "RANGE", 1000)
+    ok_sol, _, notional_sol, _, _, _ = gov.position_sizer.compute_size(
+        sig_sol, equity, cash, is_major=False, multipliers=multipliers, is_meme=False
+    )
+    assert ok_sol is True
+    assert notional_sol <= 20000.01
+
+    # 3. Meme (PEPE) - Capped at 8% ($8,000) with 0.40x tier multiplier
+    sig_pepe = Signal("VA", "PEPE/USD", "BUY", 0.85, 0.00001, 0.0000099, 0.000012, 0.000014, 2.0, "Test", "RANGE", 1000)
+    ok_pepe, _, notional_pepe, _, _, _ = gov.position_sizer.compute_size(
+        sig_pepe, equity, cash, is_major=False, multipliers=multipliers, is_meme=True
+    )
+    assert ok_pepe is True
+    assert notional_pepe <= 8000.01
+
+
+def test_dynamic_realized_volatility_multiplier(portfolio):
+    """
+    High volatility (>80th percentile) cuts size by 40% (0.60x).
+    Moderate volatility (60-80th percentile) trims size by 20% (0.80x).
+    """
+    gov_cfg = RiskGovernorConfig()
+    gov_cfg.position_sizing.volatility_scaling_enabled = True
+    gov = RiskGovernor(gov_cfg)
+    now = time.time()
+
+    sig = Signal(
+        strategy="VALUE_AREA",
+        symbol="ETH/USD",
+        direction="BUY",
+        confidence=0.85,
+        entry_price=3000.0,
+        stop_loss=2900.0,
+        take_profit_1=3200.0,
+        take_profit_2=3300.0,
+        expected_rr=2.0,
+        reason="Test",
+        regime="RANGE",
+        timestamp=int(now * 1000),
+        metadata={"volatility_percentile": 85.0},  # High volatility spike
+    )
+    eval_res = gov.evaluate_signal(sig, portfolio)
+    assert eval_res.approved is True
+    assert eval_res.details.get("volatility_multiplier") == 0.60
+
+
+def test_meme_token_concurrent_and_aggregate_exposure_limits(portfolio):
+    """
+    At most 1 meme token at a time; total meme exposure capped at 12%.
+    """
+    gov_cfg = RiskGovernorConfig()
+    gov_cfg.exposure_limits.max_concurrent_positions = 4
+    gov_cfg.exposure_limits.max_alt_concurrent_positions = 3
+    gov_cfg.exposure_limits.max_meme_concurrent_positions = 1
+    gov_cfg.exposure_limits.max_meme_exposure_pct = 0.12
+    gov = RiskGovernor(gov_cfg)
+
+    # 1. Fill PEPE (Meme Token #1)
+    portfolio.record_fill(
+        symbol="PEPE/USD", side="BUY", quantity=500000000.0, price=0.00001, fee=2.0, stop_loss=0.0000095
+    )
+
+    # 2. Try to open BONK (Meme Token #2) -> Rejected due to MAX_MEME_CONCURRENT_LIMIT
+    ok, reason = gov.exposure_controller.check_exposure(
+        candidate_symbol="BONK/USD",
+        positions=portfolio.positions,
+        equity=portfolio.total_equity,
+        proposed_notional=5000.0,
+        max_allowed_positions=4,
+    )
+    assert ok is False
+    assert RejectionReason.MAX_MEME_CONCURRENT_LIMIT in reason
+
+    # 3. But non-meme altcoin SOL CAN be opened!
+    ok_sol, _ = gov.exposure_controller.check_exposure(
+        candidate_symbol="SOL/USD",
+        positions=portfolio.positions,
+        equity=portfolio.total_equity,
+        proposed_notional=15000.0,
+        max_allowed_positions=4,
+    )
+    assert ok_sol is True

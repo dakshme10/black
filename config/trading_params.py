@@ -79,9 +79,12 @@ class DynamicPositionSizingConfig:
     enabled: bool = True
     base_risk_per_trade_pct: float = 0.010  # 1.0% equity risk
     max_major_position_pct: float = 0.50    # 50% max for BTC/ETH (aligns with portfolio cap)
-    max_alt_position_pct: float = 0.25      # 25% max for altcoins
+    max_midcap_position_pct: float = 0.20   # 20% max for mid-cap alts
+    max_meme_position_pct: float = 0.08     # 8% max for highly volatile meme tokens
+    max_alt_position_pct: float = 0.25      # 25% max for altcoins fallback
     quality_scaling_enabled: bool = True
     regime_scaling_enabled: bool = True
+    volatility_scaling_enabled: bool = True
 
 
 @dataclass
@@ -120,7 +123,10 @@ class ExposureLimitsConfig:
     max_concurrent_positions: int = 2
     max_alt_exposure_pct: float = 0.50        # Max 50% combined altcoin exposure
     max_alt_concurrent_positions: int = 1     # Max 1 altcoin at a time
+    max_meme_concurrent_positions: int = 1    # Max 1 meme token at a time
+    max_meme_exposure_pct: float = 0.12       # Max 12% combined meme exposure
     majors: List[str] = field(default_factory=lambda: ["BTC/USD", "ETH/USD", "BTCUSDT", "ETHUSDT"])
+    meme_tokens: List[str] = field(default_factory=lambda: ["PEPE/USD", "BONK/USD", "PUMP/USD", "PEPEUSDT", "BONKUSDT", "PUMPUSDT"])
 
 
 @dataclass
@@ -429,9 +435,12 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
                 enabled=bool(ps_raw.get("enabled", True)),
                 base_risk_per_trade_pct=float(ps_raw.get("base_risk_per_trade_pct", 0.010)),
                 max_major_position_pct=float(ps_raw.get("max_major_position_pct", 0.50)),
+                max_midcap_position_pct=float(ps_raw.get("max_midcap_position_pct", 0.20)),
+                max_meme_position_pct=float(ps_raw.get("max_meme_position_pct", 0.08)),
                 max_alt_position_pct=float(ps_raw.get("max_alt_position_pct", 0.25)),
                 quality_scaling_enabled=bool(ps_raw.get("quality_scaling_enabled", True)),
                 regime_scaling_enabled=bool(ps_raw.get("regime_scaling_enabled", True)),
+                volatility_scaling_enabled=bool(ps_raw.get("volatility_scaling_enabled", True)),
             ),
             drawdown_governor=DrawdownGovernorConfig(
                 enabled=bool(dg_raw.get("enabled", True)),
@@ -462,7 +471,10 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
                 max_concurrent_positions=int(el_raw.get("max_concurrent_positions", 2)),
                 max_alt_exposure_pct=float(el_raw.get("max_alt_exposure_pct", 0.50)),
                 max_alt_concurrent_positions=int(el_raw.get("max_alt_concurrent_positions", 1)),
+                max_meme_concurrent_positions=int(el_raw.get("max_meme_concurrent_positions", 1)),
+                max_meme_exposure_pct=float(el_raw.get("max_meme_exposure_pct", 0.12)),
                 majors=el_raw.get("majors", ["BTC/USD", "ETH/USD", "BTCUSDT", "ETHUSDT"]),
+                meme_tokens=el_raw.get("meme_tokens", ["PEPE/USD", "BONK/USD", "PUMP/USD", "PEPEUSDT", "BONKUSDT", "PUMPUSDT"]),
             ),
         )
 

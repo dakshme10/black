@@ -65,6 +65,8 @@ class RejectionReason:
     CORRELATED_EXPOSURE_LIMIT = "CORRELATED_EXPOSURE_LIMIT"
     MAX_ALT_EXPOSURE_LIMIT = "MAX_ALT_EXPOSURE_LIMIT"
     MAX_ALT_CONCURRENT_LIMIT = "MAX_ALT_CONCURRENT_LIMIT"
+    MAX_MEME_EXPOSURE_LIMIT = "MAX_MEME_EXPOSURE_LIMIT"
+    MAX_MEME_CONCURRENT_LIMIT = "MAX_MEME_CONCURRENT_LIMIT"
     POSITION_LIMIT = "POSITION_LIMIT"
     DUPLICATE_ENTRY = "DUPLICATE_ENTRY"
     SYMBOL_PERFORMANCE_THROTTLED = "SYMBOL_PERFORMANCE_THROTTLED"
@@ -126,6 +128,7 @@ class GovernorEvaluation:
     drawdown_multiplier: float = 1.0
     symbol_multiplier: float = 1.0
     tier_multiplier: float = 1.0
+    volatility_multiplier: float = 1.0
     combined_multiplier: float = 1.0
     expected_edge: float = 0.0
     min_required_edge: float = 0.0
@@ -571,6 +574,7 @@ class PortfolioDrawdownGovernor:
     def __init__(self, config: RiskGovernorConfig):
         self.dg_cfg = config.drawdown_governor
         self.rm_cfg = config.recovery_mode
+        self.max_positions: int = getattr(config.exposure_limits, "max_concurrent_positions", 2)
         self.recovery_mode_active: bool = False
         self.consecutive_recovery_wins: int = 0
 
@@ -579,7 +583,7 @@ class PortfolioDrawdownGovernor:
         Returns: (state, risk_multiplier, min_confidence, max_concurrent_positions)
         """
         if not self.dg_cfg.enabled:
-            return RiskState.NORMAL, 1.0, 0.60, 2
+            return RiskState.NORMAL, 1.0, 0.60, self.max_positions
 
         # 1. State Classification
         if current_drawdown >= self.dg_cfg.emergency_drawdown_pct:
@@ -596,17 +600,17 @@ class PortfolioDrawdownGovernor:
             state = RiskState.REDUCED_RISK
             mult = 0.40
             min_conf = 0.70
-            max_pos = 1
+            max_pos = max(1, self.max_positions // 2)
         elif current_drawdown >= self.dg_cfg.caution_drawdown_pct:
             state = RiskState.CAUTION
             mult = 0.70
             min_conf = 0.65
-            max_pos = 2
+            max_pos = max(2, int(self.max_positions * 0.75))
         else:
             state = RiskState.NORMAL
             mult = 1.00
             min_conf = 0.60
-            max_pos = 2
+            max_pos = self.max_positions
 
         # 2. Recovery Mode State Machine
         if self.rm_cfg.enabled:
@@ -649,11 +653,20 @@ class CorrelatedExposureController:
 
     def __init__(self, config: RiskGovernorConfig):
         self.cfg = config.exposure_limits
-        self.majors: Set[str] = {s.upper() for s in self.cfg.majors}
+        self.majors: Set[str] = {s.upper().replace("/", "") for s in self.cfg.majors}
+        raw_memes = getattr(self.cfg, "meme_tokens", ["PEPE/USD", "BONK/USD", "PUMP/USD", "PEPEUSDT", "BONKUSDT", "PUMPUSDT"])
+        self.meme_tokens: Set[str] = {s.upper().replace("/", "") for s in raw_memes}
 
     def is_major(self, symbol: str) -> bool:
         clean = symbol.upper().replace("/", "")
         for m in self.majors:
+            if clean == m.replace("/", ""):
+                return True
+        return False
+
+    def is_meme(self, symbol: str) -> bool:
+        clean = symbol.upper().replace("/", "")
+        for m in self.meme_tokens:
             if clean == m.replace("/", ""):
                 return True
         return False
@@ -682,23 +695,39 @@ class CorrelatedExposureController:
 
         # 2. Total Gross Exposure check
         current_pos_val = sum(p.notional_value for p in active_positions)
-        if (current_pos_val + proposed_notional) > (equity * self.cfg.max_gross_exposure_pct):
+        if (current_pos_val + proposed_notional) > (equity * self.cfg.max_gross_exposure_pct + 1e-5):
             return False, f"{RejectionReason.GROSS_EXPOSURE_LIMIT} (would exceed {self.cfg.max_gross_exposure_pct*100:.0f}% gross equity)"
 
-        # 3. Altcoin Correlated Exposure checks
+        # 3. Meme token Correlated Exposure checks
+        candidate_is_meme = self.is_meme(candidate_symbol)
+        if candidate_is_meme:
+            meme_positions = [p for p in active_positions if self.is_meme(p.symbol)]
+            meme_count = len(meme_positions)
+            meme_val = sum(p.notional_value for p in meme_positions)
+
+            max_meme_pos = getattr(self.cfg, "max_meme_concurrent_positions", 1)
+            if meme_count >= max_meme_pos:
+                existing_meme = meme_positions[0].symbol
+                return False, f"{RejectionReason.MAX_MEME_CONCURRENT_LIMIT} (already holding {existing_meme}, concurrent memes prohibited)"
+
+            max_meme_pct = getattr(self.cfg, "max_meme_exposure_pct", 0.12)
+            if (meme_val + proposed_notional) > (equity * max_meme_pct + 1e-5):
+                return False, f"{RejectionReason.MAX_MEME_EXPOSURE_LIMIT} (would exceed {max_meme_pct*100:.0f}% combined meme exposure)"
+
+        # 4. Altcoin Correlated Exposure checks
         candidate_is_alt = not self.is_major(candidate_symbol)
         if candidate_is_alt:
             alt_positions = [p for p in active_positions if not self.is_major(p.symbol)]
             alt_count = len(alt_positions)
             alt_val = sum(p.notional_value for p in alt_positions)
 
-            # Concurrent Altcoin positions limit (e.g. max 1 altcoin at a time)
+            # Concurrent Altcoin positions limit (e.g. max 3 alts)
             if alt_count >= self.cfg.max_alt_concurrent_positions:
                 existing_alt = alt_positions[0].symbol
                 return False, f"{RejectionReason.MAX_ALT_CONCURRENT_LIMIT} (already holding {existing_alt}, concurrent alts prohibited)"
 
-            # Combined Altcoin exposure cap (e.g. max 50% equity in alts)
-            if (alt_val + proposed_notional) > (equity * self.cfg.max_alt_exposure_pct):
+            # Combined Altcoin exposure cap (e.g. max 60% equity in alts)
+            if (alt_val + proposed_notional) > (equity * self.cfg.max_alt_exposure_pct + 1e-5):
                 return False, f"{RejectionReason.MAX_ALT_EXPOSURE_LIMIT} (would exceed {self.cfg.max_alt_exposure_pct*100:.0f}% combined alt exposure)"
 
         return True, ""
@@ -727,6 +756,7 @@ class DynamicPositionSizer:
         is_major: bool,
         multipliers: Dict[str, float],
         symbol_precision: Optional[Dict[str, Any]] = None,
+        is_meme: bool = False,
     ) -> Tuple[bool, float, float, float, float, str]:
         """
         Returns: (approved, adjusted_quantity, target_notional, risk_capital, risk_pct, reason)
@@ -767,12 +797,20 @@ class DynamicPositionSizer:
         r_mult = multipliers.get("regime", 1.0)
         dd_mult = multipliers.get("drawdown", 1.0)
         sym_mult = multipliers.get("symbol", 1.0)
+        v_mult = multipliers.get("volatility", 1.0)
 
-        # Tier multiplier: Majors vs Alts
-        tier_mult = 1.0 if is_major else 0.70
-        max_notional_cap_pct = self.cfg.max_major_position_pct if is_major else self.cfg.max_alt_position_pct
+        # Tier multiplier: Majors (1.0) vs Midcap Alts (0.70) vs Volatile Meme Tokens (0.40)
+        if is_major:
+            tier_mult = 1.0
+            max_notional_cap_pct = self.cfg.max_major_position_pct
+        elif is_meme:
+            tier_mult = 0.40  # Low allocation to highly volatile meme tokens
+            max_notional_cap_pct = getattr(self.cfg, "max_meme_position_pct", 0.08)
+        else:
+            tier_mult = 0.70  # Standard midcap alts
+            max_notional_cap_pct = getattr(self.cfg, "max_midcap_position_pct", self.cfg.max_alt_position_pct)
 
-        combined_mult = q_mult * r_mult * dd_mult * sym_mult * tier_mult
+        combined_mult = q_mult * r_mult * dd_mult * sym_mult * tier_mult * v_mult
 
         # Check if caller requested specific notional (e.g. manual trade test)
         req_notional = float(signal.metadata.get("notional_usd", 0.0)) if signal.metadata else 0.0
@@ -957,14 +995,33 @@ class RiskGovernor:
                 r_mult = 1.0
             else:
                 r_mult = 0.80
-                r_mult = 0.80
+
+        # Volatility Multiplier
+        v_mult = 1.0
+        if getattr(self.config.position_sizing, "volatility_scaling_enabled", True):
+            vol_pctile = 50.0
+            if signal.metadata and "volatility_percentile" in signal.metadata:
+                vol_pctile = float(signal.metadata["volatility_percentile"])
+            elif regime_info and hasattr(regime_info, "volatility_percentile"):
+                vol_pctile = float(regime_info.volatility_percentile)
+            elif regime_info and isinstance(regime_info, dict) and "volatility_percentile" in regime_info:
+                vol_pctile = float(regime_info["volatility_percentile"])
+
+            if vol_pctile > 80.0:
+                v_mult = 0.60
+            elif vol_pctile > 60.0:
+                v_mult = 0.80
+            else:
+                v_mult = 1.00
 
         is_major = self.exposure_controller.is_major(sym)
+        is_meme = self.exposure_controller.is_meme(sym)
         multipliers = {
             "quality": q_mult,
             "regime": r_mult,
             "drawdown": dd_mult,
             "symbol": sym_mult,
+            "volatility": v_mult,
         }
 
         # Step 9: Dynamic Position Sizing (Feature 5)
@@ -975,6 +1032,7 @@ class RiskGovernor:
             is_major=is_major,
             multipliers=multipliers,
             symbol_precision=symbol_precision,
+            is_meme=is_meme,
         )
         if not size_ok:
             return self._record_rejection(sym, size_reason.split()[0], size_reason)
@@ -991,8 +1049,8 @@ class RiskGovernor:
             return self._record_rejection(sym, exp_reason.split()[0], exp_reason)
 
         # All Gates Passed: APPROVED!
-        tier_mult = 1.0 if is_major else 0.70
-        combined_mult = q_mult * r_mult * dd_mult * sym_mult * tier_mult
+        tier_mult = 1.0 if is_major else (0.40 if is_meme else 0.70)
+        combined_mult = q_mult * r_mult * dd_mult * sym_mult * tier_mult * v_mult
 
         evaluation = GovernorEvaluation(
             approved=True,
@@ -1004,6 +1062,7 @@ class RiskGovernor:
             drawdown_multiplier=dd_mult,
             symbol_multiplier=sym_mult,
             tier_multiplier=tier_mult,
+            volatility_multiplier=v_mult,
             combined_multiplier=combined_mult,
             expected_edge=gross_edge,
             min_required_edge=req_edge,
@@ -1016,6 +1075,8 @@ class RiskGovernor:
             details={
                 "symbol": sym,
                 "is_major": is_major,
+                "is_meme": is_meme,
+                "volatility_multiplier": v_mult,
                 "strategy": signal.strategy,
                 "confidence": signal.confidence,
                 "entry_price": signal.entry_price,

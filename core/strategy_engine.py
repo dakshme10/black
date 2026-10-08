@@ -125,6 +125,8 @@ class StrategyEngine:
             meta = s.setdefault("metadata", {})
             meta.setdefault("candle_volume", curr_vol)
             meta.setdefault("prev_candle_volume", prev_vol)
+            if hasattr(regime_info, "volatility_percentile"):
+                meta.setdefault("volatility_percentile", regime_info.volatility_percentile)
             if "breakout_level" not in meta:
                 if "sweep_low" in meta and meta["sweep_low"]:
                     meta["breakout_level"] = float(meta["sweep_low"])
