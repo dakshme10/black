@@ -395,14 +395,16 @@ class AutoSLExitEngine:
             price_dropped = current_price < pos.entry_price
             peak_expansion_pct = ((pos.peak_price / pos.entry_price) - 1.0) * 100.0 if pos.entry_price > 0 else 0.0
             failed_expansion = peak_expansion_pct < min_expansion
-            lost_breakout = current_price <= pos.entry_breakout_level
+            breakout_lvl = pos.entry_breakout_level if (0 < pos.entry_breakout_level < pos.entry_price) else (pos.entry_price * 0.998)
+            lost_breakout = current_price <= breakout_lvl
             weak_volume = pos.volume_drop_detected
             return bool(price_dropped and failed_expansion and lost_breakout and weak_volume)
         else:
             price_dropped = current_price > pos.entry_price
             peak_expansion_pct = ((pos.entry_price / pos.peak_price) - 1.0) * 100.0 if pos.peak_price > 0 else 0.0
             failed_expansion = peak_expansion_pct < min_expansion
-            lost_breakout = current_price >= pos.entry_breakout_level
+            breakout_lvl = pos.entry_breakout_level if (pos.entry_breakout_level > pos.entry_price) else (pos.entry_price * 1.002)
+            lost_breakout = current_price >= breakout_lvl
             weak_volume = pos.volume_drop_detected
             return bool(price_dropped and failed_expansion and lost_breakout and weak_volume)
 

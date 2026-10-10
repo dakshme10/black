@@ -890,7 +890,11 @@ class RoostooAutonomousBot:
 
     def handle_manual_trade(self, symbol: str, side: str, notional_usd: float = 0.0) -> Dict[str, Any]:
         """Evaluate and execute manual trade with strict risk sizing."""
-        if getattr(self.config, "is_live", False) or os.getenv("COMPETITION_LIVE", "").lower() in ("true", "1"):
+        if (
+            getattr(self.config, "is_live", False)
+            or getattr(self.config, "live_trading_enabled", False)
+            or os.getenv("COMPETITION_LIVE", "").lower() in ("true", "1")
+        ):
             self.logger.log_system_event(
                 "MANUAL_TRADE_FORBIDDEN",
                 "Manual trade injection rejected: strictly forbidden in competition live mode (100% autonomous execution rule)."

@@ -202,9 +202,51 @@ class ReconciliationEngine:
                                 del self.portfolio.positions[pair]
                                 actions.append(f"Exchange holding for {coin} is 0; closed local position without sending phantom SELL.")
 
-                # Check if local portfolio has positions for coins NOT in exchange wallet
+                # 4b. Reconcile Open Short Positions (v6 Exchange Truth)
+                ex_short_pairs = set()
+                try:
+                    if hasattr(self.client, "get_short_positions"):
+                        short_resp = self.client.get_short_positions()
+                        if short_resp.get("Success", False):
+                            ex_shorts = short_resp.get("Positions", [])
+                            for sp in ex_shorts:
+                                s_pair = sp.get("Pair", "")
+                                if not s_pair:
+                                    continue
+                                ex_short_pairs.add(s_pair)
+                                s_qty = float(sp.get("ShortQty", 0.0))
+                                s_entry = float(sp.get("EntryPrice", 0.0))
+                                s_curr_px = float(sp.get("CurrentPrice", s_entry))
+
+                                if s_pair in self.portfolio.positions:
+                                    self.portfolio.positions[s_pair].quantity = s_qty
+                                    self.portfolio.positions[s_pair].side = "SELL"
+                                    self.portfolio.positions[s_pair].current_price = s_curr_px
+                                else:
+                                    base_c = s_pair.split("/")[0]
+                                    s_sl = s_entry * (1.0 + self.emergency_recovery_sl_pct)
+                                    self.portfolio.positions[s_pair] = Position(
+                                        symbol=s_pair,
+                                        base_coin=base_c,
+                                        quantity=s_qty,
+                                        entry_price=s_entry,
+                                        current_price=s_curr_px,
+                                        side="SELL",
+                                        stop_loss=s_sl,
+                                        initial_stop_loss=s_sl,
+                                        take_profit_1=s_entry * 0.985,
+                                        take_profit_2=s_entry * 0.97,
+                                        opened_timestamp=int(sp.get("CreateTimestamp", time.time() * 1000)),
+                                        is_recovered=True,
+                                        recovery_status="RECOVERED_ACTIVE",
+                                    )
+                                    actions.append(f"Reconciled exchange short position for {s_pair}: qty={s_qty}, entry=${s_entry:,.2f}")
+                except Exception as e:
+                    actions.append(f"Warning: Failed to fetch short positions: {e}")
+
+                # Check if local portfolio has positions for coins NOT in exchange spot or short holdings
                 for lp in list(self.portfolio.positions.keys()):
-                    if lp not in exchange_pairs:
+                    if lp not in exchange_pairs and lp not in ex_short_pairs:
                         del self.portfolio.positions[lp]
                         actions.append(f"Local position {lp} not present in exchange wallet; closed locally without order.")
 

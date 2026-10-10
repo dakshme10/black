@@ -394,15 +394,25 @@ class ExpectedEdgeValidator:
             return False, 0.0, 0.0, 0.0, "INVALID_ENTRY_PRICE"
 
         # Calculate target price: prefer TP1, fallback to TP2 or R:R derived target
-        target_px = signal.take_profit_1 if signal.take_profit_1 > entry_px else signal.take_profit_2
-        if target_px <= entry_px:
-            stop_dist = abs(entry_px - signal.stop_loss)
-            if stop_dist > 0 and signal.expected_rr > 0:
-                target_px = entry_px + (stop_dist * signal.expected_rr)
-            else:
-                target_px = entry_px * 1.0060  # Default 60 bps assumption
-
-        gross_edge = (target_px - entry_px) / entry_px
+        if getattr(signal, "direction", "BUY") == "BUY":
+            target_px = signal.take_profit_1 if signal.take_profit_1 > entry_px else signal.take_profit_2
+            if target_px <= entry_px:
+                stop_dist = abs(entry_px - signal.stop_loss)
+                if stop_dist > 0 and signal.expected_rr > 0:
+                    target_px = entry_px + (stop_dist * signal.expected_rr)
+                else:
+                    target_px = entry_px * 1.0060  # Default 60 bps assumption
+            gross_edge = (target_px - entry_px) / entry_px
+        else:
+            # Short target is below entry
+            target_px = signal.take_profit_1 if (0 < signal.take_profit_1 < entry_px) else signal.take_profit_2
+            if target_px >= entry_px or target_px <= 0:
+                stop_dist = abs(signal.stop_loss - entry_px)
+                if stop_dist > 0 and signal.expected_rr > 0:
+                    target_px = entry_px - (stop_dist * signal.expected_rr)
+                else:
+                    target_px = entry_px * 0.9940  # Default 60 bps assumption
+            gross_edge = (entry_px - target_px) / entry_px
 
         # Round trip transaction costs
         round_trip_cost = (self.fees.taker_fee_pct * 2.0) + (self.fees.slippage_pct * 2.0)

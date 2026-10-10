@@ -260,7 +260,11 @@ class WebServer:
                     return {"status": "success", "message": "Risk freeze reset", "details": result}
 
                 elif cmd == "manual_trade":
-                    if getattr(getattr(self.bot, "config", None), "is_live", False) or os.getenv("COMPETITION_LIVE", "").lower() in ("true", "1"):
+                    if (
+                        getattr(getattr(self.bot, "config", None), "is_live", False)
+                        or getattr(getattr(self.bot, "config", None), "live_trading_enabled", False)
+                        or os.getenv("COMPETITION_LIVE", "").lower() in ("true", "1")
+                    ):
                         raise HTTPException(
                             status_code=403,
                             detail="MANUAL_TRADE_FORBIDDEN: Manual trade execution is strictly disabled in competition live mode to enforce 100% autonomous execution compliance."

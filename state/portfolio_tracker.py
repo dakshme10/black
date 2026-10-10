@@ -248,8 +248,12 @@ class PortfolioTracker:
                     if abs(pos.current_price - px) > 1e-4:
                         changed = True
                     pos.current_price = px
-                    pos.highest_price = max(pos.highest_price, px)
-                    pos.unrealized_pnl = pos.quantity * (px - pos.entry_price)
+                    if getattr(pos, "side", "BUY") == "BUY":
+                        pos.highest_price = max(pos.highest_price, px)
+                        pos.unrealized_pnl = pos.quantity * (px - pos.entry_price)
+                    else:
+                        pos.highest_price = min(pos.highest_price, px) if pos.highest_price > 0 else px
+                        pos.unrealized_pnl = pos.quantity * (pos.entry_price - px)
 
             now_ms = int(time.time() * 1000)
             last_snap_ts = self.equity_curve[-1].timestamp_ms if self.equity_curve else 0

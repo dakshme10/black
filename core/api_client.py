@@ -468,3 +468,97 @@ class RoostooClient:
             signed=True,
             is_idempotent=True,
         )
+
+    # =========================================================================
+    # Short Selling Endpoints (v6 - RCL_TopLevelCheck)
+    # =========================================================================
+
+    def short_open(
+        self,
+        pair: str,
+        collateral: float,
+        price: Optional[float] = None,
+        order_type: str = "MARKET",
+        client_order_id: str = "",
+    ) -> Dict[str, Any]:
+        """
+        POST /v6/short_open
+        Open a new short position, or add to existing short on that pair.
+        Sized by collateral (minimum 1.0 USD).
+        Quantity is calculated by the exchange as collateral / EntryPrice,
+        rounded down to AmountPrecision.
+        """
+        if collateral < 1.0:
+            raise ValueError(f"Collateral must be at least 1.0 USD, got {collateral}")
+
+        type_upper = order_type.upper()
+        if type_upper not in ("LIMIT", "MARKET"):
+            raise ValueError(f"Invalid order type: {order_type}. Must be 'LIMIT' or 'MARKET'.")
+        if type_upper == "LIMIT" and price is None:
+            raise ValueError("LIMIT short_open requires 'price'.")
+
+        payload: Dict[str, Any] = {
+            "pair": pair,
+            "collateral": str(collateral),
+            "timestamp": self.get_synced_timestamp(),
+        }
+        if type_upper == "LIMIT" and price is not None:
+            payload["order_type"] = "LIMIT"
+            payload["price"] = str(price)
+
+        return self._request(
+            method="POST",
+            path="/v6/short_open",
+            data=payload,
+            signed=True,
+            is_idempotent=False,
+            client_order_id=client_order_id,
+        )
+
+    def short_close(
+        self,
+        pair: str,
+        close_qty: Optional[float] = None,
+        close_pct: Optional[float] = None,
+        client_order_id: str = "",
+    ) -> Dict[str, Any]:
+        """
+        POST /v6/short_close
+        Close all or part of an open short position.
+        Every close is reduce-only.
+        Fills immediately at current best ask (MinAsk).
+        If neither close_qty nor close_pct is sent, closes the entire position.
+        """
+        payload: Dict[str, Any] = {
+            "pair": pair,
+            "timestamp": self.get_synced_timestamp(),
+        }
+        if close_qty is not None:
+            payload["close_qty"] = str(close_qty)
+        elif close_pct is not None:
+            if not (0 < close_pct <= 100):
+                raise ValueError(f"close_pct must be between 0 and 100, got {close_pct}")
+            payload["close_pct"] = str(close_pct)
+
+        return self._request(
+            method="POST",
+            path="/v6/short_close",
+            data=payload,
+            signed=True,
+            is_idempotent=False,
+            client_order_id=client_order_id,
+        )
+
+    def get_short_positions(self) -> Dict[str, Any]:
+        """
+        GET /v6/short_positions
+        Returns all open short positions with live PnL.
+        """
+        params = {"timestamp": self.get_synced_timestamp()}
+        return self._request(
+            method="GET",
+            path="/v6/short_positions",
+            params=params,
+            signed=True,
+            is_idempotent=True,
+        )
